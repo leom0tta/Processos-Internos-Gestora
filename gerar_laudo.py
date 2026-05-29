@@ -45,25 +45,18 @@ class GorilaLaudo:
     """Classe para gerar laudo de carteira usando dados da API Gorila"""
 
     def __init__(self, env_path: str = ".env"):
-        """Inicializa com configurações do arquivo .env"""
-        # Carregar variáveis de ambiente
+        # Carrega .env apenas se existir (local). No Render, as variáveis já estão no ambiente.
         env_file = Path(env_path)
-        if not env_file.exists():
-            logger.error(f"Arquivo .env não encontrado em {env_path}")
-            print(f"\n❌ Erro: Arquivo .env não encontrado!")
-            print(f"   Por favor, copie o arquivo '.env.example' para '.env':")
-            print(f"   cp .env.example .env")
-            sys.exit(1)
-
-        load_dotenv(env_path)
+        if env_file.exists():
+            load_dotenv(env_path)
+        else:
+            logger.info("Arquivo .env não encontrado — usando variáveis de ambiente do sistema.")
 
         # Validar credenciais
         self.api_key = os.getenv('GORILA_API_KEY')
         if not self.api_key or self.api_key == 'sua_api_key_aqui':
-            logger.error("GORILA_API_KEY não configurada no .env")
-            print("\n❌ Erro: GORILA_API_KEY não configurada!")
-            print("   Edite o arquivo .env e configure sua chave de API da Gorila")
-            sys.exit(1)
+            logger.error("GORILA_API_KEY não configurada")
+            raise RuntimeError("GORILA_API_KEY não configurada. Configure a variável de ambiente.")
 
         # Carregar configurações do .env
         self.base_url = os.getenv('GORILA_API_BASE_URL', 'https://core.gorila.com.br')
