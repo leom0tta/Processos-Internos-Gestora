@@ -182,14 +182,10 @@ class GorilaLaudo:
     def buscar_portfolios(self) -> List[dict]:
         """Lista todos os portfolios do cliente"""
         logger.info("Buscando portfolios...")
-        try:
-            data = self._fazer_request("/portfolios")
-            portfolios = data.get('records', [])
-            logger.info(f"Encontrados {len(portfolios)} portfolios")
-            return portfolios
-        except Exception as e:
-            logger.error(f"Erro ao buscar portfolios: {e}")
-            return []
+        data = self._fazer_request("/portfolios")
+        portfolios = data.get('records', [])
+        logger.info(f"Encontrados {len(portfolios)} portfolios")
+        return portfolios
 
     def buscar_posicoes(self, portfolio_id: str) -> List[dict]:
         """Busca todas as posições de um portfolio"""
