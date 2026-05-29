@@ -290,9 +290,10 @@ def api_portfolios():
 @login_required
 def api_gerar_laudo():
     data = request.get_json()
-    cliente_nome = data.get("cliente_nome", "").strip()
-    perfil       = data.get("perfil", "").strip()
-    portfolio_id = data.get("portfolio_id", "").strip()
+    cliente_nome       = data.get("cliente_nome", "").strip()
+    perfil             = data.get("perfil", "").strip()
+    portfolio_id       = data.get("portfolio_id", "").strip()
+    mapeamentos_extras = data.get("mapeamentos_extras", {})   # {security_type: asset_class}
 
     if not cliente_nome or not perfil or not portfolio_id:
         return jsonify({"ok": False, "erro": "Preencha todos os campos."}), 400
@@ -310,7 +311,35 @@ def api_gerar_laudo():
         if not posicoes:
             return jsonify({"ok": False, "erro": "Portfolio sem posições."}), 400
 
-        posicoes_proc, _ = system.processar_posicoes(posicoes, valores_mercado, pnl, perfil)
+        posicoes_proc, tipos_nao_mapeados = system.processar_posicoes(
+            posicoes, valores_mercado, pnl, perfil,
+            mapeamentos_extras=mapeamentos_extras,
+        )
+
+        # Se ainda há tipos não mapeados, devolve para o frontend classificar
+        if tipos_nao_mapeados:
+            classes_disponiveis = list(system.suitability_profiles[perfil].keys())
+            return jsonify({
+                "ok":                 False,
+                "needs_mapping":      True,
+                "tipos_nao_mapeados": tipos_nao_mapeados,
+                "classes_disponiveis": classes_disponiveis,
+            })
+
+        # Persiste no BD os mapeamentos manuais fornecidos
+        if USE_DB and mapeamentos_extras:
+            for sec_type, asset_class in mapeamentos_extras.items():
+                row = AssetTypeMapping.query.get(sec_type)
+                if row:
+                    row.asset_class = asset_class
+                    row.updated_at  = datetime.utcnow()
+                else:
+                    db.session.add(AssetTypeMapping(
+                        security_type=sec_type,
+                        asset_class=asset_class,
+                    ))
+            db.session.commit()
+
         if not posicoes_proc:
             return jsonify({"ok": False, "erro": "Nenhuma posição pôde ser processada."}), 400
 

@@ -206,6 +206,37 @@
     .step.active { color: #1B3A5C; font-weight: 700; }
     .step.active::after { background: #1B3A5C; }
 
+    /* ── Modal ────────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.45); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.2);
+      width: 100%; max-width: 560px; max-height: 80vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-header {
+      background: #1B3A5C; color: #fff;
+      padding: 16px 24px; font-size: 15px; font-weight: 700;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+    .modal-body p { font-size: 13.5px; color: #4a5568; margin-bottom: 18px; line-height: 1.5; }
+    .mapping-row { margin-bottom: 16px; }
+    .mapping-row .type-label {
+      font-size: 11px; font-weight: 700; color: #1B3A5C;
+      text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px;
+    }
+    .mapping-row .type-name { font-size: 12.5px; color: #6b7c93; margin-bottom: 6px; }
+    .modal-footer {
+      padding: 14px 24px; border-top: 1px solid #e8eef4;
+      display: flex; justify-content: flex-end; gap: 10px;
+    }
+
     /* ── Coming soon ──────────────────────────────────── */
     .coming-soon {
       display: flex;
@@ -365,6 +396,22 @@
   </main>
 </div><!-- /layout -->
 
+<!-- Modal: tipos de ativo não mapeados -->
+<div class="modal-overlay" id="modal-mapping">
+  <div class="modal">
+    <div class="modal-header">
+      ⚠️ Tipos de ativo não identificados
+    </div>
+    <div class="modal-body">
+      <p>Os ativos abaixo não foram reconhecidos automaticamente. Selecione a classe correta para cada um — a escolha será salva para os próximos laudos.</p>
+      <div id="modal-mapping-rows"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="confirmarMapeamentos()">Confirmar e gerar laudo</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // ── Navegação entre páginas ─────────────────────
   function showPage(name, el) {
@@ -439,8 +486,11 @@
     }
   }
 
+  // ── Estado do laudo em andamento ────────────────
+  let _laudoPayload = null;
+
   // ── Gerar laudo ─────────────────────────────────
-  async function gerarLaudo() {
+  async function gerarLaudo(mapeamentos_extras = {}) {
     const cliente   = document.getElementById('cliente_nome').value;
     const perfil    = document.getElementById('perfil').value;
     const portfolio = document.getElementById('portfolio_id').value;
@@ -456,11 +506,13 @@
     arquivoGerado = null;
     setStatus('loading', 'Buscando dados da carteira na Gorila...');
 
+    _laudoPayload = { cliente_nome: cliente, perfil, portfolio_id: portfolio };
+
     try {
       const res  = await fetch('/api/gerar-laudo', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cliente_nome: cliente, perfil, portfolio_id: portfolio })
+        body:    JSON.stringify({ ..._laudoPayload, mapeamentos_extras })
       });
       const data = await res.json();
 
@@ -468,14 +520,63 @@
         arquivoGerado = data.arquivo;
         setStatus('success', `Laudo gerado com sucesso: ${data.arquivo}`);
         document.getElementById('btn-download').style.display = 'inline-flex';
+      } else if (data.needs_mapping) {
+        // Tipos desconhecidos — abre o modal
+        btn.disabled = false;
+        setStatus('loading', `${data.tipos_nao_mapeados.length} tipo(s) de ativo não identificado(s). Classifique-os para continuar.`);
+        abrirModalMapeamento(data.tipos_nao_mapeados, data.classes_disponiveis, mapeamentos_extras);
       } else {
         setStatus('error', 'Erro: ' + data.erro);
       }
     } catch (e) {
       setStatus('error', 'Erro de conexão com o servidor: ' + e.message);
     } finally {
-      btn.disabled = false;
+      if (!document.getElementById('modal-mapping').classList.contains('open')) {
+        btn.disabled = false;
+      }
     }
+  }
+
+  // ── Modal de mapeamento ─────────────────────────
+  function abrirModalMapeamento(tipos, classes, mapeamentosAtuais) {
+    const rows = document.getElementById('modal-mapping-rows');
+    rows.innerHTML = '';
+
+    tipos.forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'mapping-row';
+
+      const options = classes.map(c =>
+        `<option value="${c}" ${mapeamentosAtuais[t.security_type] === c ? 'selected' : ''}>${c}</option>`
+      ).join('');
+
+      div.innerHTML = `
+        <div class="type-label">${t.security_type}</div>
+        <div class="type-name">${t.security_name}</div>
+        <select class="mapping-select" data-type="${t.security_type}" style="width:100%;padding:8px 12px;border:1.5px solid #d1dbe6;border-radius:6px;font-size:13.5px;font-family:Arial,sans-serif;">
+          <option value="">Selecione a classe de ativo...</option>
+          ${options}
+        </select>`;
+      rows.appendChild(div);
+    });
+
+    document.getElementById('modal-mapping').classList.add('open');
+  }
+
+  async function confirmarMapeamentos() {
+    const selects = document.querySelectorAll('.mapping-select');
+    const mapeamentos = {};
+    let valido = true;
+
+    selects.forEach(sel => {
+      if (!sel.value) { valido = false; sel.style.borderColor = '#c0392b'; }
+      else { sel.style.borderColor = '#d1dbe6'; mapeamentos[sel.dataset.type] = sel.value; }
+    });
+
+    if (!valido) { alert('Classifique todos os tipos antes de continuar.'); return; }
+
+    document.getElementById('modal-mapping').classList.remove('open');
+    await gerarLaudo(mapeamentos);
   }
 
   // ── Download ────────────────────────────────────

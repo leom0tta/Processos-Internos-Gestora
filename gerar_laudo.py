@@ -302,41 +302,67 @@ class GorilaLaudo:
             except ValueError:
                 print("Entrada inválida. Digite um número ou 'skip'.")
 
-    def processar_posicoes(self, posicoes: List[dict], valores_mercado: dict, pnl: dict, perfil: str) -> Tuple[List[dict], bool]:
+    def processar_posicoes(
+        self,
+        posicoes: List[dict],
+        valores_mercado: dict,
+        pnl: dict,
+        perfil: str,
+        mapeamentos_extras: dict = None,
+    ) -> Tuple[List[dict], list]:
         """
         Processa posições e realiza mapeamento.
-        Retorna (posições_processadas, sucesso)
+
+        mapeamentos_extras: dict {security_type: asset_class} fornecido pelo usuário
+            para tipos ainda não conhecidos.
+
+        Retorna (posicoes_processadas, tipos_nao_mapeados)
+            tipos_nao_mapeados: lista de dicts {security_type, security_name}
+                para tipos que não foram encontrados nem em mappings nem em mapeamentos_extras.
+            Se tipos_nao_mapeados for não-vazio, posicoes_processadas estará incompleta
+            e o chamador deve solicitar os mapeamentos ao usuário e chamar novamente.
         """
-        classes_disponiveis = list(self.suitability_profiles[perfil].keys())
+        if mapeamentos_extras is None:
+            mapeamentos_extras = {}
+
         posicoes_processadas = []
-        todos_mapeados = True
+        tipos_nao_mapeados   = []
+        vistos               = set()   # evita duplicatas na lista de não-mapeados
 
         for posicao in posicoes:
-            security = posicao.get('security', {})
+            security      = posicao.get('security', {})
             security_type = security.get('type', 'UNKNOWN')
             security_name = security.get('name', 'N/A')
-            security_id = security.get('id')
+            security_id   = security.get('id')
 
             classe, foi_encontrado = self.mapear_tipo_para_classe(security_type, security_name)
 
             if not foi_encontrado:
-                todos_mapeados = False
-                classe = self.pedir_mapeamento_usuario(security_type, security_name, classes_disponiveis)
-
-                if classe is None:
-                    logger.warning(f"Posição ignorada por falta de mapeamento: {security_name}")
-                    continue
+                # Verifica se o usuário forneceu um mapeamento manual
+                if security_type in mapeamentos_extras:
+                    classe = mapeamentos_extras[security_type]
+                    # Persiste no mapeamento em memória para próximas posições do mesmo tipo
+                    self.asset_type_mapping['mappings'][security_type] = classe
+                    logger.info(f"Mapeamento manual aplicado: {security_type} -> {classe}")
+                else:
+                    if security_type not in vistos:
+                        tipos_nao_mapeados.append({
+                            'security_type': security_type,
+                            'security_name': security_name,
+                        })
+                        vistos.add(security_type)
+                    continue  # pula a posição até receber o mapeamento
 
             valor_mercado = valores_mercado.get(security_id, 0)
-            pnl_valor = pnl.get(security_id, 0)
+            pnl_valor     = pnl.get(security_id, 0)
 
-            posicao['classe_ativo'] = classe
-            posicao['valor_mercado'] = valor_mercado
-            posicao['pnl'] = pnl_valor
+            posicao['classe_ativo']   = classe
+            posicao['valor_mercado']  = valor_mercado
+            posicao['pnl']            = pnl_valor
 
             posicoes_processadas.append(posicao)
 
-        return posicoes_processadas, todos_mapeados
+        return posicoes_processadas, tipos_nao_mapeados
 
     def calcular_alocacoes(self, posicoes: List[dict]) -> Tuple[Dict[str, float], float]:
         """Calcula alocação por classe de ativo e patrimônio total"""
