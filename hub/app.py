@@ -28,6 +28,23 @@ app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 # ── Banco de dados ──────────────────────────────────────────
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
+import json as _json
+
+def _seed_mappings():
+    """Popula asset_type_mappings a partir do JSON se a tabela estiver vazia."""
+    if AssetTypeMapping.query.first():
+        return  # já tem dados, não faz nada
+    json_path = Path(__file__).parent.parent / "asset_type_mapping.json"
+    if not json_path.exists():
+        return
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = _json.load(f)
+    for security_type, asset_class in data.get('mappings', {}).items():
+        db.session.add(AssetTypeMapping(security_type=security_type, asset_class=asset_class))
+    db.session.commit()
+    import logging
+    logging.getLogger(__name__).info(f"Seed: {len(data['mappings'])} mapeamentos inseridos.")
+
 # Render fornece URLs com prefixo "postgres://"; SQLAlchemy exige "postgresql://"
 if DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
@@ -39,6 +56,7 @@ if DATABASE_URL:
     db.init_app(app)
     with app.app_context():
         db.create_all()
+        _seed_mappings()
     USE_DB = True
 else:
     USE_DB = False
