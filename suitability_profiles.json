@@ -1,0 +1,193 @@
+{
+  "Conservador": {
+    "Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Sem restrição de emissor"
+    },
+    "Renda fixa privada com grau de investimento": {
+      "min": 0,
+      "max": 0.2,
+      "obs": "Rating mínimo brA ou equivalente"
+    },
+    "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC": {
+      "min": 0,
+      "max": 0.5,
+      "obs": "Máximo no limite de R$ 250 mil, por emissor/conglomerado"
+    },
+    "Fundos de renda fixa referenciados DI": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Exclusivamente pós-fixados"
+    },
+    "Fundos de renda fixa ativa / crédito": {
+      "min": 0,
+      "max": 0.3,
+      "obs": "Inclui fundos de crédito high grade"
+    },
+    "Fundos multimercado / macro": {
+      "min": 0,
+      "max": 0.1,
+      "obs": "Volatilidade esperada máxima 8%"
+    },
+    "Fundos FIDC": {
+      "min": 0,
+      "max": 0.05,
+      "obs": "Fundos de crédito estruturado"
+    },
+    "Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)": {
+      "min": 0,
+      "max": 0.05,
+      "obs": "ETFs de renda fixa não entram"
+    },
+    "Renda Variável (ETFs de Renda Fixa)": {
+      "min": 0,
+      "max": 0.5,
+      "obs": "ETFs exclusivamente de renda fixa (risco Tesouro)"
+    },
+    "Ativos no exterior": {
+      "min": 0,
+      "max": 0.05,
+      "obs": "Idealmente, como hedge"
+    },
+    "Derivativos": {
+      "min": 0,
+      "max": 0.0,
+      "obs": "Vedado, exceto hedge cambial autorizado"
+    },
+    "Criptoativos": {
+      "min": 0,
+      "max": 0.0,
+      "obs": "Vedado"
+    }
+  },
+  "Moderado": {
+    "Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Sem restrição de emissor"
+    },
+    "Renda fixa privada com grau de investimento": {
+      "min": 0,
+      "max": 0.5,
+      "obs": "Rating mínimo brA ou equivalente"
+    },
+    "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC": {
+      "min": 0,
+      "max": 0.5,
+      "obs": "Máximo no limite de R$ 250 mil, por emissor/conglomerado"
+    },
+    "Fundos de renda fixa referenciados DI": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Exclusivamente pós-fixados"
+    },
+    "Fundos de renda fixa ativa / crédito": {
+      "min": 0,
+      "max": 0.5,
+      "obs": "Inclui fundos de crédito high grade"
+    },
+    "Fundos multimercado / macro": {
+      "min": 0,
+      "max": 0.3,
+      "obs": "Volatilidade esperada máxima 10%"
+    },
+    "Fundos FIDC": {
+      "min": 0,
+      "max": 0.1,
+      "obs": "Fundos de crédito estruturado"
+    },
+    "Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)": {
+      "min": 0,
+      "max": 0.25,
+      "obs": "ETFs de renda fixa não entram"
+    },
+    "Renda Variável (ETFs de Renda Fixa)": {
+      "min": 0,
+      "max": 0.5,
+      "obs": "ETFs exclusivamente de renda fixa"
+    },
+    "Ativos no exterior": {
+      "min": 0,
+      "max": 0.2,
+      "obs": "Idealmente, como hedge"
+    },
+    "Derivativos": {
+      "min": 0,
+      "max": 0.05,
+      "obs": "Vedado, exceto hedge cambial autorizado"
+    },
+    "Criptoativos": {
+      "min": 0,
+      "max": 0.1,
+      "obs": "Negociado em bolsa (B3)"
+    }
+  },
+  "Agressivo": {
+    "Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Sem restrição de emissor"
+    },
+    "Renda fixa privada com grau de investimento": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Rating mínimo brA ou equivalente"
+    },
+    "Renda fixa privada sem grau de investimento": {
+      "min": 0,
+      "max": 0.2,
+      "obs": "Sem rating mínimo"
+    },
+    "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Máximo no limite de R$ 250 mil, por emissor/conglomerado"
+    },
+    "Fundos de renda fixa referenciados DI": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Exclusivamente pós-fixados"
+    },
+    "Fundos de renda fixa ativa / crédito": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Inclui fundos de crédito high grade"
+    },
+    "Fundos multimercado / macro": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Volatilidade esperada máxima 10%"
+    },
+    "Fundos FIDC": {
+      "min": 0,
+      "max": 0.2,
+      "obs": "Fundos de crédito estruturado"
+    },
+    "Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "ETFs de renda fixa não entram"
+    },
+    "Renda Variável (ETFs de Renda Fixa)": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "ETFs exclusivamente de renda fixa"
+    },
+    "Ativos no exterior": {
+      "min": 0,
+      "max": 1.0,
+      "obs": "Via veículos regulados CVM"
+    },
+    "Derivativos": {
+      "min": 0,
+      "max": 0.2,
+      "obs": "Para hedge ou não"
+    },
+    "Criptoativos": {
+      "min": 0,
+      "max": 0.2,
+      "obs": "Negociado em bolsa (B3)"
+    }
+  }
+}

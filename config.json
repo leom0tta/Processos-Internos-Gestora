@@ -1,0 +1,7 @@
+{
+  "note": "Credenciais e configurações são carregadas do arquivo .env",
+  "note_2": "Configure seu .env baseado no arquivo .env.example",
+  "note_3": "Nunca commite seu .env (está no .gitignore)",
+  "_example": {
+    "gorila_api": {
+      "base_url": "https://api
