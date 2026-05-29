@@ -7,7 +7,6 @@ Backend Flask
 
 import os
 import sys
-import json
 import threading
 from datetime import datetime
 from functools import wraps
@@ -26,9 +25,27 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
+# ── Banco de dados ──────────────────────────────────────────
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
+# Render fornece URLs com prefixo "postgres://"; SQLAlchemy exige "postgresql://"
+if DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+
+if DATABASE_URL:
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    from database import db, AssetTypeMapping, Cliente
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()
+    USE_DB = True
+else:
+    USE_DB = False
+
+# ── Diretórios e caminhos ───────────────────────────────────
 OUTPUTS_DIR = Path(__file__).parent / "outputs"
 OUTPUTS_DIR.mkdir(exist_ok=True)
-
 ENV_PATH = str(Path(__file__).parent.parent / ".env")
 
 # ============================================================
@@ -39,35 +56,43 @@ TENANT_ID     = os.environ.get('TENANT_ID', '')
 APP_ID        = os.environ.get('APP_ID', '')
 CLIENT_SECRET = os.environ.get('CLIENT_SECRET', '')
 REDIRECT_URI  = os.environ.get('REDIRECT_URI', 'http://localhost:5000/auth/callback')
-
 AUTHORITY     = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES        = ["User.Read"]
 
 
 def _build_msal_app():
     return msal.ConfidentialClientApplication(
-        APP_ID,
-        authority=AUTHORITY,
-        client_credential=CLIENT_SECRET,
+        APP_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET,
     )
 
 
 def _build_auth_url(state=None):
     return _build_msal_app().get_authorization_request_url(
-        SCOPES,
-        state=state,
-        redirect_uri=REDIRECT_URI,
+        SCOPES, state=state, redirect_uri=REDIRECT_URI,
     )
 
 
 def login_required(f):
-    """Decorator: redireciona para /login se não autenticado"""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('user'):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
+
+
+def get_system(asset_type_mapping=None):
+    """Inicializa o GorilaLaudo, injetando mappings do BD se disponível"""
+    from gerar_laudo import GorilaLaudo
+    return GorilaLaudo(ENV_PATH, asset_type_mapping=asset_type_mapping)
+
+
+def load_mappings_from_db():
+    """Carrega asset_type_mappings do BD como dict compatível com o JSON original"""
+    if not USE_DB:
+        return None
+    rows = AssetTypeMapping.query.all()
+    return {'mappings': {r.security_type: r.asset_class for r in rows}}
 
 
 # ============================================================
@@ -83,26 +108,21 @@ def login():
 
 @app.route("/auth/start")
 def auth_start():
-    """Inicia o fluxo OAuth2 — redireciona para Microsoft"""
-    auth_url = _build_auth_url(state="hub")
-    return redirect(auth_url)
+    return redirect(_build_auth_url(state="hub"))
 
 
 @app.route("/auth/callback")
 def auth_callback():
-    """Recebe o código da Microsoft e troca pelo token"""
     error = request.args.get('error')
     if error:
-        return render_template("login.html", error=f"Erro de autenticação: {request.args.get('error_description', error)}")
+        return render_template("login.html", error=f"Erro: {request.args.get('error_description', error)}")
 
     code = request.args.get('code')
     if not code:
         return render_template("login.html", error="Código de autorização não recebido.")
 
     result = _build_msal_app().acquire_token_by_authorization_code(
-        code,
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
+        code, scopes=SCOPES, redirect_uri=REDIRECT_URI,
     )
 
     if "error" in result:
@@ -115,11 +135,8 @@ def auth_callback():
 @app.route("/logout")
 def logout():
     session.clear()
-    logout_url = (
-        f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/logout"
-        f"?post_logout_redirect_uri={REDIRECT_URI.replace('/auth/callback', '/')}"
-    )
-    return redirect(logout_url)
+    base = REDIRECT_URI.replace('/auth/callback', '/')
+    return redirect(f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri={base}")
 
 
 # ============================================================
@@ -133,13 +150,116 @@ def index():
 
 
 # ============================================================
+# API — CLIENTES
+# ============================================================
+
+@app.route("/api/clientes", methods=["GET"])
+@login_required
+def api_clientes_list():
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    clientes = Cliente.query.filter_by(ativo=True).order_by(Cliente.nome).all()
+    return jsonify({"ok": True, "clientes": [c.to_dict() for c in clientes]})
+
+
+@app.route("/api/clientes", methods=["POST"])
+@login_required
+def api_clientes_create():
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    data = request.get_json()
+    nome = data.get("nome", "").strip()
+    if not nome:
+        return jsonify({"ok": False, "erro": "Nome é obrigatório."}), 400
+
+    cliente = Cliente(
+        nome                  = nome.upper(),
+        cpf                   = data.get("cpf", "").strip() or None,
+        email                 = data.get("email", "").strip() or None,
+        perfil                = data.get("perfil") or None,
+        portfolio_id          = data.get("portfolio_id") or None,
+        gorila_portfolio_name = data.get("gorila_portfolio_name") or None,
+    )
+    db.session.add(cliente)
+    db.session.commit()
+    return jsonify({"ok": True, "cliente": cliente.to_dict()}), 201
+
+
+@app.route("/api/clientes/<int:cliente_id>", methods=["PUT"])
+@login_required
+def api_clientes_update(cliente_id):
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    cliente = Cliente.query.get_or_404(cliente_id)
+    data = request.get_json()
+
+    if "nome"                  in data: cliente.nome                  = data["nome"].strip().upper()
+    if "cpf"                   in data: cliente.cpf                   = data["cpf"] or None
+    if "email"                 in data: cliente.email                 = data["email"] or None
+    if "perfil"                in data: cliente.perfil                = data["perfil"] or None
+    if "portfolio_id"          in data: cliente.portfolio_id          = data["portfolio_id"] or None
+    if "gorila_portfolio_name" in data: cliente.gorila_portfolio_name = data["gorila_portfolio_name"] or None
+    if "ativo"                 in data: cliente.ativo                 = bool(data["ativo"])
+
+    cliente.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True, "cliente": cliente.to_dict()})
+
+
+@app.route("/api/clientes/<int:cliente_id>", methods=["DELETE"])
+@login_required
+def api_clientes_delete(cliente_id):
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    cliente = Cliente.query.get_or_404(cliente_id)
+    cliente.ativo = False  # soft delete
+    cliente.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ============================================================
+# API — MAPEAMENTOS
+# ============================================================
+
+@app.route("/api/mappings", methods=["GET"])
+@login_required
+def api_mappings_list():
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    rows = AssetTypeMapping.query.order_by(AssetTypeMapping.security_type).all()
+    return jsonify({"ok": True, "mappings": [r.to_dict() for r in rows]})
+
+
+@app.route("/api/mappings", methods=["POST"])
+@login_required
+def api_mappings_upsert():
+    """Cria ou atualiza um mapeamento"""
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    data = request.get_json()
+    security_type = data.get("security_type", "").strip().upper()
+    asset_class   = data.get("asset_class", "").strip()
+    if not security_type or not asset_class:
+        return jsonify({"ok": False, "erro": "security_type e asset_class são obrigatórios."}), 400
+
+    row = AssetTypeMapping.query.get(security_type)
+    if row:
+        row.asset_class = asset_class
+        row.updated_at  = datetime.utcnow()
+    else:
+        db.session.add(AssetTypeMapping(security_type=security_type, asset_class=asset_class))
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ============================================================
 # API — LAUDO
 # ============================================================
 
 @app.route("/api/portfolios")
 @login_required
 def api_portfolios():
-    """Busca lista de portfolios da API Gorila"""
     try:
         system = get_system()
         portfolios = system.buscar_portfolios()
@@ -151,7 +271,6 @@ def api_portfolios():
 @app.route("/api/gerar-laudo", methods=["POST"])
 @login_required
 def api_gerar_laudo():
-    """Gera o laudo e retorna o nome do arquivo para download"""
     data = request.get_json()
     cliente_nome = data.get("cliente_nome", "").strip()
     perfil       = data.get("perfil", "").strip()
@@ -159,12 +278,12 @@ def api_gerar_laudo():
 
     if not cliente_nome or not perfil or not portfolio_id:
         return jsonify({"ok": False, "erro": "Preencha todos os campos."}), 400
-
     if perfil not in ["Conservador", "Moderado", "Agressivo"]:
         return jsonify({"ok": False, "erro": "Perfil inválido."}), 400
 
     try:
-        system = get_system()
+        mappings = load_mappings_from_db()
+        system   = get_system(asset_type_mapping=mappings)
 
         posicoes        = system.buscar_posicoes(portfolio_id)
         valores_mercado = system.buscar_valores_mercado(portfolio_id)
@@ -174,7 +293,6 @@ def api_gerar_laudo():
             return jsonify({"ok": False, "erro": "Portfolio sem posições."}), 400
 
         posicoes_proc, _ = system.processar_posicoes(posicoes, valores_mercado, pnl, perfil)
-
         if not posicoes_proc:
             return jsonify({"ok": False, "erro": "Nenhuma posição pôde ser processada."}), 400
 
@@ -187,15 +305,14 @@ def api_gerar_laudo():
         output    = str(OUTPUTS_DIR / filename)
 
         system.gerar_docx(
-            cliente_nome    = cliente_nome,
-            perfil          = perfil,
-            alocacoes       = alocacoes,
-            patrimonio_total= patrimonio_total,
-            posicoes        = posicoes_proc,
-            analise_suit    = analise_suit,
-            output_path     = output,
+            cliente_nome     = cliente_nome,
+            perfil           = perfil,
+            alocacoes        = alocacoes,
+            patrimonio_total = patrimonio_total,
+            posicoes         = posicoes_proc,
+            analise_suit     = analise_suit,
+            output_path      = output,
         )
-
         return jsonify({"ok": True, "arquivo": filename})
 
     except Exception as e:
@@ -205,17 +322,10 @@ def api_gerar_laudo():
 @app.route("/api/download/<filename>")
 @login_required
 def api_download(filename):
-    """Serve o arquivo gerado para download"""
     filepath = OUTPUTS_DIR / filename
     if not filepath.exists():
         return jsonify({"ok": False, "erro": "Arquivo não encontrado."}), 404
     return send_file(str(filepath), as_attachment=True, download_name=filename)
-
-
-def get_system():
-    """Inicializa o GorilaLaudo com o .env correto"""
-    from gerar_laudo import GorilaLaudo
-    return GorilaLaudo(ENV_PATH)
 
 
 # ============================================================
@@ -232,8 +342,5 @@ if __name__ == "__main__":
         webbrowser.open(f"http://localhost:{port}")
 
     threading.Thread(target=open_browser, daemon=True).start()
-
     print(f"\n🚀 Hub de Processos iniciado em http://localhost:{port}")
-    print("   Pressione Ctrl+C para encerrar.\n")
-
     app.run(host="0.0.0.0", port=port, debug=False)

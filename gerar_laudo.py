@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 class GorilaLaudo:
     """Classe para gerar laudo de carteira usando dados da API Gorila"""
 
-    def __init__(self, env_path: str = ".env"):
+    def __init__(self, env_path: str = ".env", asset_type_mapping: dict = None):
         # Carrega .env apenas se existir (local). No Render, as variáveis já estão no ambiente.
         env_file = Path(env_path)
         if env_file.exists():
@@ -72,7 +72,11 @@ class GorilaLaudo:
         self.mapping_path = _base / "asset_type_mapping.json"
         self.suitability_path = _base / "suitability_profiles.json"
 
-        self.asset_type_mapping = self._load_json(self.mapping_path)
+        # Se mappings foram injetados (ex: do BD), usa eles; senão lê do JSON local
+        if asset_type_mapping is not None:
+            self.asset_type_mapping = asset_type_mapping
+        else:
+            self.asset_type_mapping = self._load_json(self.mapping_path)
         self.suitability_profiles = self._load_json(self.suitability_path)
 
         # Carregar guia de fundos para liquidação
