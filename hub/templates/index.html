@@ -24,6 +24,15 @@
     .topbar .logo { font-size: 17px; font-weight: 700; letter-spacing: .4px; }
     .topbar .divider { width: 1px; height: 22px; background: rgba(255,255,255,.25); }
     .topbar .subtitle { font-size: 13px; opacity: .75; }
+    .topbar .spacer { flex: 1; }
+    .topbar .user-info { font-size: 12.5px; opacity: .8; }
+    .topbar .btn-logout {
+      font-size: 12px; color: rgba(255,255,255,.65);
+      background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+      border-radius: 5px; padding: 5px 12px; cursor: pointer;
+      text-decoration: none; transition: background .15s;
+    }
+    .topbar .btn-logout:hover { background: rgba(255,255,255,.18); color: #fff; }
 
     /* ── Layout ───────────────────────────────────────── */
     .layout { display: flex; flex: 1; overflow: hidden; }
@@ -219,6 +228,12 @@
   <div class="logo">Fatorial Capital</div>
   <div class="divider"></div>
   <div class="subtitle">Hub de Processos</div>
+  <div class="spacer"></div>
+  {% if user %}
+  <div class="user-info">{{ user.get('name', user.get('preferred_username', '')) }}</div>
+  <div class="divider"></div>
+  {% endif %}
+  <a href="/logout" class="btn-logout">Sair</a>
 </div>
 
 <div class="layout">
