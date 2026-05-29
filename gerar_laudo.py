@@ -76,11 +76,12 @@ class GorilaLaudo:
         self.suitability_profiles = self._load_json(self.suitability_path)
 
         # Carregar guia de fundos para liquidação
-        username = os.getlogin()
-
-        self.guia_fundos_path = Path(
-            fr"C:\Users\{username}\Fatorial Capital\Fatorial Capital - Documentos\Processos Internos\Banco de Dados\Guia-de-Fundos-Maio-2026.xlsx"
-        )
+        # Aceita variável de ambiente GUIA_FUNDOS_PATH; se não definida, usa pasta guia-de-fundos/ relativa ao script
+        guia_env = os.getenv('GUIA_FUNDOS_PATH', '')
+        if guia_env:
+            self.guia_fundos_path = Path(guia_env)
+        else:
+            self.guia_fundos_path = Path(__file__).parent / "guia-de-fundos" / "Guia-de-Fundos-Maio-2026.xlsx"
         self.mapa_liquidacao = self._carregar_guia_fundos()
 
         logger.info("Sistema inicializado com sucesso")
