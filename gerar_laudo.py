@@ -449,6 +449,11 @@ class GorilaLaudo:
                 return "Sem liquidez (ilíquido)"
 
         # FALLBACK: Lógica baseada em tipo de ativo
+
+        # Tangíveis/Custom (prioridade sobre renda fixa)
+        if asset_class in ['TANGIBLE'] or 'CUSTOM' in security_type.upper():
+            return "Sem liquidez (ilíquido)"
+
         # Ações e ETFs B3 (RV): D+2
         if asset_class in ['STOCKS'] or 'STOCK' in security_type.upper() or 'ETF' in security_type.upper():
             return "Curto Prazo (D+2 a D+30)"
@@ -485,10 +490,6 @@ class GorilaLaudo:
 
         # FIDC
         if 'FIDC' in security_type.upper():
-            return "Sem liquidez (ilíquido)"
-
-        # Tangíveis/Custom
-        if asset_class in ['TANGIBLE'] or 'CUSTOM' in security_type.upper():
             return "Sem liquidez (ilíquido)"
 
         return "Médio Prazo (D+31 a D+90)"
