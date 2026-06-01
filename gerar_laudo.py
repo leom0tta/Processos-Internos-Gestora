@@ -139,8 +139,10 @@ class GorilaLaudo:
                             liquidacao = row.get('Liquidação')
 
                             if pd.notna(fundo_cnpj) and pd.notna(liquidacao):
-                                # Mapear por cnpj do fundo
-                                mapa[str(fundo_cnpj).strip()] = str(liquidacao).strip()
+                                # Normaliza CNPJ: remove pontuação e espaços para garantir match
+                                cnpj_normalizado = ''.join(filter(str.isdigit, str(fundo_cnpj)))
+                                if cnpj_normalizado:
+                                    mapa[cnpj_normalizado] = str(liquidacao).strip()
 
                         logger.info(f"Carregados {len(df)} fundos da aba '{aba}'")
                 except Exception as e:
@@ -420,7 +422,10 @@ class GorilaLaudo:
         asset_class = security.get('assetClass', '')
         security_type = security.get('type', '')
         maturity_date = security.get('maturityDate')
-        security_cnpj = security.get('cnpj', '')
+
+        # Normaliza CNPJ: aceita tanto com pontuação quanto só dígitos
+        _cnpj_raw = security.get('cnpj', '') or security.get('taxId', '') or ''
+        security_cnpj = ''.join(filter(str.isdigit, str(_cnpj_raw)))
 
         # PRIMEIRO: Verificar no guia de fundos
         if security_cnpj and security_cnpj in self.mapa_liquidacao:

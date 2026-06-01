@@ -9,8 +9,7 @@
     "CDB": "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC",
     "LCI": "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC",
     "LCA": "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC",
-    "CASH": "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC",
-    "SAVINGS": "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC",
+    "CASH": "Saldo em Conta",
     "DI_FUND": "Fundos de renda fixa referenciados DI",
     "FIXED_INCOME_FUND": "Fundos de renda fixa ativa / crédito",
     "CREDIT_FUND": "Fundos de renda fixa ativa / crédito",
@@ -45,7 +44,6 @@
     "CORPORATE_BONDS_CDB": "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC",
     "TREASURY_LOCAL_NTNBP": "Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)",
     "FUNDQUOTE": "Fundos de renda fixa referenciados DI",
-    "CUSTOM": "Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)",
     "TREASURY_LOCAL_LTN": "Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)"
   },
   "notes": "Adicione novos tipos de seguranca conforme descobrir. O sistema pedirá confirmação para tipos não mapeados."
