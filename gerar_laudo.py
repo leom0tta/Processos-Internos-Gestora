@@ -139,8 +139,8 @@ class GorilaLaudo:
                             liquidacao = row.get('Liquidação')
 
                             if pd.notna(fundo_cnpj) and pd.notna(liquidacao):
-                                # Normaliza CNPJ: remove pontuação e espaços para garantir match
-                                cnpj_normalizado = ''.join(filter(str.isdigit, str(fundo_cnpj)))
+                                # Normaliza CNPJ: remove pontuação e zero-preenche para 14 dígitos
+                                cnpj_normalizado = ''.join(filter(str.isdigit, str(fundo_cnpj))).zfill(14)
                                 if cnpj_normalizado:
                                     mapa[cnpj_normalizado] = str(liquidacao).strip()
 
@@ -423,9 +423,9 @@ class GorilaLaudo:
         security_type = security.get('type', '')
         maturity_date = security.get('maturityDate')
 
-        # Normaliza CNPJ: aceita tanto com pontuação quanto só dígitos
+        # Normaliza CNPJ: aceita tanto com pontuação quanto só dígitos; zero-preenche para 14 dígitos
         _cnpj_raw = security.get('cnpj', '') or security.get('taxId', '') or ''
-        security_cnpj = ''.join(filter(str.isdigit, str(_cnpj_raw)))
+        security_cnpj = ''.join(filter(str.isdigit, str(_cnpj_raw))).zfill(14)
 
         # PRIMEIRO: Verificar no guia de fundos
         if security_cnpj and security_cnpj in self.mapa_liquidacao:
