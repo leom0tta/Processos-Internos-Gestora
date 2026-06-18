@@ -13,7 +13,7 @@
     "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC": {
       "min": 0,
       "max": 0.5,
-      "obs": "Máximo no limite de R$ 250 mil, por emissor/conglomerado"
+      "obs": "Máximo de 80% do limite de R$ 250 mil, por emissor/conglomerado"
     },
     "Fundos de renda fixa referenciados DI": {
       "min": 0,
@@ -59,6 +59,11 @@
       "min": 0,
       "max": 0.0,
       "obs": "Vedado"
+    },
+    "Alternativos": {
+      "min": 0,
+      "max": 0.1,
+      "obs": "FIP e Ouro (ETF)"
     }
   },
   "Moderado": {
@@ -75,7 +80,7 @@
     "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC": {
       "min": 0,
       "max": 0.5,
-      "obs": "Máximo no limite de R$ 250 mil, por emissor/conglomerado"
+      "obs": "Máximo de 80% do limite de R$ 250 mil, por emissor/conglomerado"
     },
     "Fundos de renda fixa referenciados DI": {
       "min": 0,
@@ -121,6 +126,11 @@
       "min": 0,
       "max": 0.1,
       "obs": "Negociado em bolsa (B3)"
+    },
+    "Alternativos": {
+      "min": 0,
+      "max": 0.2,
+      "obs": "FIP e Ouro (ETF)"
     }
   },
   "Agressivo": {
@@ -142,7 +152,7 @@
     "Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC": {
       "min": 0,
       "max": 1.0,
-      "obs": "Máximo no limite de R$ 250 mil, por emissor/conglomerado"
+      "obs": "Máximo de 80% do limite de R$ 250 mil, por emissor/conglomerado"
     },
     "Fundos de renda fixa referenciados DI": {
       "min": 0,
@@ -188,6 +198,11 @@
       "min": 0,
       "max": 0.2,
       "obs": "Negociado em bolsa (B3)"
+    },
+    "Alternativos": {
+      "min": 0,
+      "max": 0.25,
+      "obs": "FIP e Ouro (ETF)"
     }
   }
 }
