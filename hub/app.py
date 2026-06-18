@@ -240,7 +240,6 @@ def api_clientes_delete(cliente_id):
     db.session.commit()
     return jsonify({"ok": True})
 
-
 # ============================================================
 # API — MAPEAMENTOS
 # ============================================================
