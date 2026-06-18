@@ -308,7 +308,6 @@ class GorilaLaudo:
         self,
         posicoes: List[dict],
         valores_mercado: dict,
-        pnl: dict,
         perfil: str,
         mapeamentos_extras: dict = None,
     ) -> Tuple[List[dict], list]:
@@ -356,11 +355,9 @@ class GorilaLaudo:
                     continue  # pula a posição até receber o mapeamento
 
             valor_mercado = valores_mercado.get(security_id, 0)
-            pnl_valor     = pnl.get(security_id, 0)
 
             posicao['classe_ativo']   = classe
             posicao['valor_mercado']  = valor_mercado
-            posicao['pnl']            = pnl_valor
 
             posicoes_processadas.append(posicao)
 

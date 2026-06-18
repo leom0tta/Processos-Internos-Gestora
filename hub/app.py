@@ -76,6 +76,7 @@ CLIENT_SECRET = os.environ.get('CLIENT_SECRET', '')
 REDIRECT_URI  = os.environ.get('REDIRECT_URI', 'http://localhost:5000/auth/callback')
 AUTHORITY     = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES        = ["User.Read"]
+API_KEY       = os.environ.get('API_KEY', '')
 
 
 def _build_msal_app():
@@ -93,6 +94,9 @@ def _build_auth_url(state=None):
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        # Permite acesso via API Key no header X-API-Key
+        if API_KEY and request.headers.get('X-API-Key') == API_KEY:
+            return f(*args, **kwargs)
         if not session.get('user'):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
