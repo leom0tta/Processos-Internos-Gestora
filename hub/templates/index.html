@@ -487,6 +487,7 @@
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
     el.classList.add('active');
+    if (name === 'categorizacao') carregarNameMappings();
   }
 
   // ── Dados em memória ────────────────────────────
@@ -591,8 +592,8 @@
       } else if (data.needs_mapping) {
         // Tipos desconhecidos — abre o modal
         btn.disabled = false;
-        setStatus('loading', `${data.tipos_nao_mapeados.length} tipo(s) de ativo não identificado(s). Classifique-os para continuar.`);
-        abrirModalMapeamento(data.tipos_nao_mapeados, data.classes_disponiveis, mapeamentos_extras);
+        setStatus('loading', `${data.ativos_nao_mapeados.length} ativo(s) não identificado(s). Classifique-os para continuar.`);
+        abrirModalMapeamento(data.ativos_nao_mapeados, data.classes_disponiveis, mapeamentos_extras);
       } else {
         setStatus('error', 'Erro: ' + data.erro);
       }
@@ -760,13 +761,6 @@
     el.style.color   = tipo === 'success' ? '#1a7a4a' : '#c0392b';
     el.textContent   = msg;
     setTimeout(() => { el.style.display = 'none'; }, 4000);
-  }
-
-  // Carrega name mappings ao entrar na aba
-  const _origShowPage = showPage;
-  function showPage(name, el) {
-    _origShowPage(name, el);
-    if (name === 'categorizacao') carregarNameMappings();
   }
 
   // ── Init ─────────────────────────────────────────
