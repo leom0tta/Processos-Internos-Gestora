@@ -52,7 +52,7 @@ if DATABASE_URL.startswith('postgres://'):
 if DATABASE_URL:
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    from database import db, AssetTypeMapping, Cliente
+    from database import db, AssetTypeMapping, AssetNameMapping, Cliente
     db.init_app(app)
     with app.app_context():
         db.create_all()
@@ -103,18 +103,19 @@ def login_required(f):
     return decorated
 
 
-def get_system(asset_type_mapping=None):
+def get_system(asset_type_mapping=None, asset_name_mapping=None):
     """Inicializa o GorilaLaudo, injetando mappings do BD se disponível"""
     from gerar_laudo import GorilaLaudo
-    return GorilaLaudo(ENV_PATH, asset_type_mapping=asset_type_mapping)
+    return GorilaLaudo(ENV_PATH, asset_type_mapping=asset_type_mapping, asset_name_mapping=asset_name_mapping)
 
 
 def load_mappings_from_db():
-    """Carrega asset_type_mappings do BD como dict compatível com o JSON original"""
+    """Carrega ambos os mappings do BD. Retorna (type_mapping, name_mapping)."""
     if not USE_DB:
-        return None
-    rows = AssetTypeMapping.query.all()
-    return {'mappings': {r.security_type: r.asset_class for r in rows}}
+        return None, None
+    type_map = {'mappings': {r.security_type: r.asset_class for r in AssetTypeMapping.query.all()}}
+    name_map = {'mappings': {r.asset_name: r.asset_class for r in AssetNameMapping.query.all()}}
+    return type_map, name_map
 
 
 # ============================================================
@@ -276,6 +277,55 @@ def api_mappings_upsert():
 
 
 # ============================================================
+# API — MAPEAMENTOS POR NOME
+# ============================================================
+
+@app.route("/api/name-mappings", methods=["GET"])
+@login_required
+def api_name_mappings_list():
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    rows = AssetNameMapping.query.order_by(AssetNameMapping.asset_name).all()
+    return jsonify({"ok": True, "mappings": [r.to_dict() for r in rows]})
+
+
+@app.route("/api/name-mappings", methods=["POST"])
+@login_required
+def api_name_mappings_upsert():
+    """Cria ou atualiza um mapeamento por nome de ativo"""
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    data       = request.get_json()
+    asset_name  = data.get("asset_name", "").strip()
+    asset_class = data.get("asset_class", "").strip()
+    if not asset_name or not asset_class:
+        return jsonify({"ok": False, "erro": "asset_name e asset_class são obrigatórios."}), 400
+
+    row = AssetNameMapping.query.get(asset_name)
+    if row:
+        row.asset_class = asset_class
+        row.updated_at  = datetime.utcnow()
+    else:
+        db.session.add(AssetNameMapping(asset_name=asset_name, asset_class=asset_class))
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/name-mappings/<path:asset_name>", methods=["DELETE"])
+@login_required
+def api_name_mappings_delete(asset_name):
+    """Remove um mapeamento por nome de ativo"""
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    row = AssetNameMapping.query.get(asset_name)
+    if not row:
+        return jsonify({"ok": False, "erro": "Mapeamento não encontrado."}), 404
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ============================================================
 # API — LAUDO
 # ============================================================
 
@@ -283,7 +333,8 @@ def api_mappings_upsert():
 @login_required
 def api_portfolios():
     try:
-        system = get_system()
+        type_map, name_map = load_mappings_from_db()
+        system = get_system(asset_type_mapping=type_map, asset_name_mapping=name_map)
         portfolios = system.buscar_portfolios()
         return jsonify({"ok": True, "portfolios": portfolios})
     except Exception as e:
@@ -294,10 +345,11 @@ def api_portfolios():
 @login_required
 def api_gerar_laudo():
     data = request.get_json()
-    cliente_nome       = data.get("cliente_nome", "").strip()
-    perfil             = data.get("perfil", "").strip()
-    portfolio_id       = data.get("portfolio_id", "").strip()
-    mapeamentos_extras = data.get("mapeamentos_extras", {})   # {security_type: asset_class}
+    cliente_nome            = data.get("cliente_nome", "").strip()
+    perfil                  = data.get("perfil", "").strip()
+    portfolio_id            = data.get("portfolio_id", "").strip()
+    mapeamentos_extras      = data.get("mapeamentos_extras", {})       # {security_type: asset_class}
+    mapeamentos_extras_nome = data.get("mapeamentos_extras_nome", {})  # {security_name: asset_class}
 
     if not cliente_nome or not perfil or not portfolio_id:
         return jsonify({"ok": False, "erro": "Preencha todos os campos."}), 400
@@ -305,32 +357,32 @@ def api_gerar_laudo():
         return jsonify({"ok": False, "erro": "Perfil inválido."}), 400
 
     try:
-        mappings = load_mappings_from_db()
-        system   = get_system(asset_type_mapping=mappings)
+        type_map, name_map = load_mappings_from_db()
+        system = get_system(asset_type_mapping=type_map, asset_name_mapping=name_map)
 
         posicoes        = system.buscar_posicoes(portfolio_id)
         valores_mercado = system.buscar_valores_mercado(portfolio_id)
-        pnl             = system.buscar_pnl(portfolio_id)
 
         if not posicoes:
             return jsonify({"ok": False, "erro": "Portfolio sem posições."}), 400
 
-        posicoes_proc, tipos_nao_mapeados = system.processar_posicoes(
-            posicoes, valores_mercado, pnl, perfil,
+        posicoes_proc, ativos_nao_mapeados = system.processar_posicoes(
+            posicoes, valores_mercado, perfil,
             mapeamentos_extras=mapeamentos_extras,
+            mapeamentos_extras_nome=mapeamentos_extras_nome,
         )
 
-        # Se ainda há tipos não mapeados, devolve para o frontend classificar
-        if tipos_nao_mapeados:
+        # Se ainda há ativos não mapeados, devolve para o frontend classificar
+        if ativos_nao_mapeados:
             classes_disponiveis = list(system.suitability_profiles[perfil].keys())
             return jsonify({
-                "ok":                 False,
-                "needs_mapping":      True,
-                "tipos_nao_mapeados": tipos_nao_mapeados,
-                "classes_disponiveis": classes_disponiveis,
+                "ok":                   False,
+                "needs_mapping":        True,
+                "ativos_nao_mapeados":  ativos_nao_mapeados,
+                "classes_disponiveis":  classes_disponiveis,
             })
 
-        # Persiste no BD os mapeamentos manuais fornecidos
+        # Persiste no BD os mapeamentos manuais por tipo
         if USE_DB and mapeamentos_extras:
             for sec_type, asset_class in mapeamentos_extras.items():
                 row = AssetTypeMapping.query.get(sec_type)
@@ -340,6 +392,20 @@ def api_gerar_laudo():
                 else:
                     db.session.add(AssetTypeMapping(
                         security_type=sec_type,
+                        asset_class=asset_class,
+                    ))
+            db.session.commit()
+
+        # Persiste no BD os mapeamentos manuais por nome
+        if USE_DB and mapeamentos_extras_nome:
+            for asset_name, asset_class in mapeamentos_extras_nome.items():
+                row = AssetNameMapping.query.get(asset_name)
+                if row:
+                    row.asset_class = asset_class
+                    row.updated_at  = datetime.utcnow()
+                else:
+                    db.session.add(AssetNameMapping(
+                        asset_name=asset_name,
                         asset_class=asset_class,
                     ))
             db.session.commit()

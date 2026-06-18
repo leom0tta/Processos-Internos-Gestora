@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 class GorilaLaudo:
     """Classe para gerar laudo de carteira usando dados da API Gorila"""
 
-    def __init__(self, env_path: str = ".env", asset_type_mapping: dict = None):
+    def __init__(self, env_path: str = ".env", asset_type_mapping: dict = None, asset_name_mapping: dict = None):
         # Carrega .env apenas se existir (local). No Render, as variáveis já estão no ambiente.
         env_file = Path(env_path)
         if env_file.exists():
@@ -78,6 +78,9 @@ class GorilaLaudo:
         else:
             self.asset_type_mapping = self._load_json(self.mapping_path)
         self.suitability_profiles = self._load_json(self.suitability_path)
+
+        # Mapeamentos por nome de ativo (prioridade sobre security_type)
+        self.asset_name_mapping = asset_name_mapping if asset_name_mapping is not None else {'mappings': {}}
 
         # Carregar guia de fundos para liquidação
         # Aceita variável de ambiente GUIA_FUNDOS_PATH; se não definida, usa pasta guia-de-fundos/ relativa ao script
@@ -230,44 +233,29 @@ class GorilaLaudo:
             logger.error(f"Erro ao buscar valores de mercado: {e}")
             return {}
 
-    def buscar_pnl(self, portfolio_id: str) -> Dict[str, float]:
-        """Busca PnL das posições"""
-        logger.info(f"Buscando PnL...")
-        try:
-            data = self._fazer_request(
-                f"/portfolios/{portfolio_id}/positions/pnl",
-                {"limit": 1000}
-            )
-            resultados = data.get('records', [])
-
-            pnl_map = {}
-            for item in resultados:
-                security_id = item.get('security', {}).get('id')
-                gain_loss = item.get('pnl', 0)
-                if security_id:
-                    pnl_map[security_id] = gain_loss
-
-            return pnl_map
-        except Exception as e:
-            logger.error(f"Erro ao buscar PnL: {e}")
-            return {}
-
     def mapear_tipo_para_classe(self, security_type: str, security_name: str) -> Tuple[str, bool]:
         """
-        Mapeia security.type para classe de ativo do suitability.
+        Mapeia ativo para classe, com prioridade:
+          1. Nome do ativo (asset_name_mapping)
+          2. Tipo do ativo (asset_type_mapping)
         Retorna (classe, foi_encontrado)
         """
-        mappings = self.asset_type_mapping.get('mappings', {})
+        # Prioridade 1: nome exato do ativo
+        name_mappings = self.asset_name_mapping.get('mappings', {})
+        if security_name and security_name in name_mappings:
+            return name_mappings[security_name], True
 
-        if security_type in mappings:
-            return mappings[security_type], True
+        # Prioridade 2: security_type
+        type_mappings = self.asset_type_mapping.get('mappings', {})
+        if security_type in type_mappings:
+            return type_mappings[security_type], True
 
         security_type_upper = security_type.upper()
-        for tipo, classe in mappings.items():
+        for tipo, classe in type_mappings.items():
             if tipo.upper() == security_type_upper:
                 return classe, True
 
-        logger.warning(f"Tipo de segurança não mapeado: {security_type} ({security_name})")
+        logger.warning(f"Ativo não mapeado: {security_type} ({security_name})")
         return None, False
 
     def pedir_mapeamento_usuario(self, security_type: str, security_name: str, classes_disponiveis: List[str]) -> str:
@@ -310,25 +298,29 @@ class GorilaLaudo:
         valores_mercado: dict,
         perfil: str,
         mapeamentos_extras: dict = None,
+        mapeamentos_extras_nome: dict = None,
     ) -> Tuple[List[dict], list]:
         """
-        Processa posições e realiza mapeamento.
+        Processa posições e realiza mapeamento com prioridade:
+          1. asset_name_mapping (BD, por nome)
+          2. mapeamentos_extras_nome (manual do usuário, por nome)
+          3. asset_type_mapping (BD, por tipo)
+          4. mapeamentos_extras (manual do usuário, por tipo)
 
-        mapeamentos_extras: dict {security_type: asset_class} fornecido pelo usuário
-            para tipos ainda não conhecidos.
-
-        Retorna (posicoes_processadas, tipos_nao_mapeados)
-            tipos_nao_mapeados: lista de dicts {security_type, security_name}
-                para tipos que não foram encontrados nem em mappings nem em mapeamentos_extras.
-            Se tipos_nao_mapeados for não-vazio, posicoes_processadas estará incompleta
+        Retorna (posicoes_processadas, ativos_nao_mapeados)
+            ativos_nao_mapeados: lista de dicts {security_type, security_name}
+                para ativos sem mapeamento em nenhuma fonte.
+            Se ativos_nao_mapeados for não-vazio, posicoes_processadas estará incompleta
             e o chamador deve solicitar os mapeamentos ao usuário e chamar novamente.
         """
         if mapeamentos_extras is None:
             mapeamentos_extras = {}
+        if mapeamentos_extras_nome is None:
+            mapeamentos_extras_nome = {}
 
         posicoes_processadas = []
-        tipos_nao_mapeados   = []
-        vistos               = set()   # evita duplicatas na lista de não-mapeados
+        ativos_nao_mapeados  = []
+        vistos               = set()   # evita duplicatas (chave: security_name ou security_type)
 
         for posicao in posicoes:
             security      = posicao.get('security', {})
@@ -336,32 +328,40 @@ class GorilaLaudo:
             security_name = security.get('name', 'N/A')
             security_id   = security.get('id')
 
+            # Tentativa via BD (prioridade nome → tipo)
             classe, foi_encontrado = self.mapear_tipo_para_classe(security_type, security_name)
 
             if not foi_encontrado:
-                # Verifica se o usuário forneceu um mapeamento manual
-                if security_type in mapeamentos_extras:
+                # Fallback 1: mapeamento manual por nome (fornecido pelo usuário nesta chamada)
+                if security_name in mapeamentos_extras_nome:
+                    classe = mapeamentos_extras_nome[security_name]
+                    self.asset_name_mapping['mappings'][security_name] = classe
+                    logger.info(f"Mapeamento manual por nome aplicado: {security_name} -> {classe}")
+
+                # Fallback 2: mapeamento manual por tipo
+                elif security_type in mapeamentos_extras:
                     classe = mapeamentos_extras[security_type]
-                    # Persiste no mapeamento em memória para próximas posições do mesmo tipo
                     self.asset_type_mapping['mappings'][security_type] = classe
-                    logger.info(f"Mapeamento manual aplicado: {security_type} -> {classe}")
+                    logger.info(f"Mapeamento manual por tipo aplicado: {security_type} -> {classe}")
+
                 else:
-                    if security_type not in vistos:
-                        tipos_nao_mapeados.append({
+                    chave = security_name if security_name != 'N/A' else security_type
+                    if chave not in vistos:
+                        ativos_nao_mapeados.append({
                             'security_type': security_type,
                             'security_name': security_name,
                         })
-                        vistos.add(security_type)
+                        vistos.add(chave)
                     continue  # pula a posição até receber o mapeamento
 
             valor_mercado = valores_mercado.get(security_id, 0)
 
-            posicao['classe_ativo']   = classe
-            posicao['valor_mercado']  = valor_mercado
+            posicao['classe_ativo']  = classe
+            posicao['valor_mercado'] = valor_mercado
 
             posicoes_processadas.append(posicao)
 
-        return posicoes_processadas, tipos_nao_mapeados
+        return posicoes_processadas, ativos_nao_mapeados
 
     def calcular_alocacoes(self, posicoes: List[dict]) -> Tuple[Dict[str, float], float]:
         """Calcula alocação por classe de ativo e patrimônio total"""
@@ -651,11 +651,11 @@ class GorilaLaudo:
             run.font.bold = True
             run.font.color.rgb = RGBColor(27, 58, 92)
 
-        pos_table = doc.add_table(rows=len(posicoes) + 1, cols=6)
+        pos_table = doc.add_table(rows=len(posicoes) + 1, cols=5)
         self._colorir_grid_tabela(pos_table)
         self._set_table_full_width(pos_table)
 
-        headers = ['Ativo', 'Classe', 'Valor (R$)', 'Alocação', 'PnL (R$)', 'Liquidez/Prazo']
+        headers = ['Ativo', 'Classe', 'Valor (R$)', 'Alocação', 'Liquidez/Prazo']
         for col, header in enumerate(headers):
             pos_table.cell(0, col).text = header
 
@@ -666,7 +666,6 @@ class GorilaLaudo:
             security_name = pos.get('security', {}).get('name', 'N/A')
             classe = pos.get('classe_ativo', 'N/A')
             valor = pos.get('valor_mercado', 0)
-            pnl_val = pos.get('pnl', 0)
             alocacao = (valor / patrimonio_total * 100) if patrimonio_total > 0 else 0
             security = pos.get('security', {})
             liquidez = self.classificar_liquidez(security)
@@ -675,14 +674,12 @@ class GorilaLaudo:
             pos_table.cell(idx, 1).text = classe
             pos_table.cell(idx, 2).text = f"{valor:,.0f}".replace(',', '.')
             pos_table.cell(idx, 3).text = f"{alocacao:.2f}%"
-            pos_table.cell(idx, 4).text = f"{pnl_val:,.0f}".replace(',', '.')
-            pos_table.cell(idx, 5).text = liquidez
+            pos_table.cell(idx, 4).text = liquidez
 
         self._set_table_cell_margins(pos_table, top=40, left=80, bottom=40, right=80)
         self._set_table_font_size(pos_table, 7.5)
         self._align_column(pos_table, 2)
         self._align_column(pos_table, 3)
-        self._align_column(pos_table, 4)
         self._remove_cell_spacing(pos_table)
         self._colorir_negativos(pos_table)
 
@@ -995,7 +992,6 @@ def main():
         print(f"\n⏳ Buscando dados do portfolio...")
         posicoes = system.buscar_posicoes(portfolio_id)
         valores_mercado = system.buscar_valores_mercado(portfolio_id)
-        pnl = system.buscar_pnl(portfolio_id)
 
         if not posicoes:
             print("Erro: Portfolio sem posições!")
@@ -1003,7 +999,7 @@ def main():
 
         print(f"\n⏳ Processando {len(posicoes)} posições...")
         posicoes_proc, todos_mapeados = system.processar_posicoes(
-            posicoes, valores_mercado, pnl, perfil
+            posicoes, valores_mercado, perfil
         )
 
         if not posicoes_proc:

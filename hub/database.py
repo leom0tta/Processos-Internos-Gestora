@@ -26,6 +26,22 @@ class AssetTypeMapping(db.Model):
         }
 
 
+class AssetNameMapping(db.Model):
+    """Mapeamento de nome de ativo → classe de ativo (prioridade sobre security_type)"""
+    __tablename__ = 'asset_name_mappings'
+
+    asset_name  = db.Column(db.String(255), primary_key=True)
+    asset_class = db.Column(db.String(255), nullable=False)
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at  = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'asset_name':  self.asset_name,
+            'asset_class': self.asset_class,
+        }
+
+
 class Cliente(db.Model):
     """Cadastro de clientes da gestora"""
     __tablename__ = 'clientes'
