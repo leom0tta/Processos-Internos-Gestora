@@ -280,6 +280,20 @@ def api_mappings_upsert():
 # API — MAPEAMENTOS POR NOME
 # ============================================================
 
+@app.route("/api/mappings/<security_type>", methods=["DELETE"])
+@login_required
+def api_mappings_delete(security_type):
+    """Remove um mapeamento por security_type"""
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    row = AssetTypeMapping.query.get(security_type)
+    if not row:
+        return jsonify({"ok": False, "erro": "Mapeamento não encontrado."}), 404
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/name-mappings", methods=["GET"])
 @login_required
 def api_name_mappings_list():

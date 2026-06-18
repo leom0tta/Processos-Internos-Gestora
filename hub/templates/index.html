@@ -364,63 +364,129 @@
     <div id="page-categorizacao" class="page">
       <div class="page-header">
         <h1>Fluxo de Categorização</h1>
-        <p>Mapeamentos de ativos por nome — têm prioridade sobre a classificação por tipo.</p>
+        <p>Gerencie como os ativos são classificados. Mapeamentos por nome têm prioridade sobre os por tipo.</p>
       </div>
 
-      <!-- Formulário de adição -->
-      <div class="card">
-        <h2>Adicionar / Atualizar Mapeamento</h2>
-        <div class="form-grid">
-          <div class="field">
-            <label>Nome do Ativo</label>
-            <input type="text" id="cat-nome" placeholder="Ex: CDII11" autocomplete="off" />
-            <div class="hint">Exatamente como aparece na carteira Gorila.</div>
+      <!-- Abas internas -->
+      <div style="display:flex; gap:0; margin-bottom:24px; border-bottom:2px solid #d1dbe6;">
+        <button id="tab-btn-nome" onclick="switchCatTab('nome')"
+          style="padding:10px 22px; border:none; background:none; cursor:pointer; font-size:13.5px; font-weight:700; color:#1B3A5C; border-bottom:3px solid #1B3A5C; margin-bottom:-2px; font-family:Arial,sans-serif;">
+          Por Nome de Ativo
+        </button>
+        <button id="tab-btn-tipo" onclick="switchCatTab('tipo')"
+          style="padding:10px 22px; border:none; background:none; cursor:pointer; font-size:13.5px; font-weight:700; color:#8fa3b8; border-bottom:3px solid transparent; margin-bottom:-2px; font-family:Arial,sans-serif;">
+          Por Security Type
+        </button>
+      </div>
+
+      <!-- ── ABA: Por Nome ── -->
+      <div id="cat-tab-nome">
+        <div class="card">
+          <h2>Adicionar / Atualizar — Por Nome</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label>Nome do Ativo</label>
+              <input type="text" id="cat-nome" placeholder="Ex: CDII11" autocomplete="off" />
+              <div class="hint">Exatamente como aparece na carteira Gorila.</div>
+            </div>
+            <div class="field">
+              <label>Classe de Ativo</label>
+              <select id="cat-classe">
+                <option value="">Selecione...</option>
+                <option>Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)</option>
+                <option>Renda fixa privada com grau de investimento</option>
+                <option>Renda fixa privada sem grau de investimento</option>
+                <option>Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC</option>
+                <option>Saldo em Conta</option>
+                <option>Fundos de renda fixa referenciados DI</option>
+                <option>Fundos de renda fixa ativa / crédito</option>
+                <option>Fundos multimercado / macro</option>
+                <option>Fundos FIDC</option>
+                <option>Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)</option>
+                <option>Renda Variável (ETFs de Renda Fixa)</option>
+                <option>Ativos no exterior</option>
+                <option>Derivativos</option>
+                <option>Criptoativos</option>
+              </select>
+            </div>
           </div>
-          <div class="field">
-            <label>Classe de Ativo</label>
-            <select id="cat-classe">
-              <option value="">Selecione...</option>
-              <option>Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)</option>
-              <option>Renda fixa privada com grau de investimento</option>
-              <option>Renda fixa privada sem grau de investimento</option>
-              <option>Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC</option>
-              <option>Saldo em Conta</option>
-              <option>Fundos de renda fixa referenciados DI</option>
-              <option>Fundos de renda fixa ativa / crédito</option>
-              <option>Fundos multimercado / macro</option>
-              <option>Fundos FIDC</option>
-              <option>Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)</option>
-              <option>Renda Variável (ETFs de Renda Fixa)</option>
-              <option>Ativos no exterior</option>
-              <option>Derivativos</option>
-              <option>Criptoativos</option>
-            </select>
+          <div style="margin-top:18px; display:flex; align-items:center; gap:14px;">
+            <button class="btn btn-primary" onclick="salvarNameMapping()">Salvar</button>
+            <span id="cat-nome-status" style="font-size:13.5px; display:none;"></span>
           </div>
         </div>
-        <div style="margin-top:18px; display:flex; align-items:center; gap:14px;">
-          <button class="btn btn-primary" onclick="salvarNameMapping()">Salvar</button>
-          <span id="cat-status" style="font-size:13.5px; display:none;"></span>
+
+        <div class="card">
+          <h2>Cadastrados por nome <span id="cat-count" style="font-weight:400; font-size:12px; color:#8fa3b8; text-transform:none; letter-spacing:0;"></span></h2>
+          <div id="cat-loading" style="color:#8fa3b8; font-size:13.5px; padding:12px 0;">Carregando...</div>
+          <table id="cat-table" style="display:none; width:100%; border-collapse:collapse; font-size:13.5px;">
+            <thead>
+              <tr style="background:#1B3A5C; color:#fff; text-align:left;">
+                <th style="padding:10px 14px; font-weight:700;">Nome do Ativo</th>
+                <th style="padding:10px 14px; font-weight:700;">Classe de Ativo</th>
+                <th style="padding:10px 14px; font-weight:700; width:60px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cat-tbody"></tbody>
+          </table>
+          <div id="cat-empty" style="display:none; color:#8fa3b8; font-size:13.5px; padding:12px 0;">Nenhum mapeamento cadastrado ainda.</div>
         </div>
       </div>
 
-      <!-- Tabela de mapeamentos existentes -->
-      <div class="card">
-        <h2>Mapeamentos cadastrados <span id="cat-count" style="font-weight:400; font-size:12px; color:#8fa3b8; text-transform:none; letter-spacing:0;"></span></h2>
-        <div id="cat-loading" style="color:#8fa3b8; font-size:13.5px; padding:12px 0;">Carregando...</div>
-        <table id="cat-table" style="display:none; width:100%; border-collapse:collapse; font-size:13.5px;">
-          <thead>
-            <tr style="background:#1B3A5C; color:#fff; text-align:left;">
-              <th style="padding:10px 14px; font-weight:700; border-radius:4px 0 0 0;">Nome do Ativo</th>
-              <th style="padding:10px 14px; font-weight:700;">Classe de Ativo</th>
-              <th style="padding:10px 14px; font-weight:700; border-radius:0 4px 0 0; width:60px;"></th>
-            </tr>
-          </thead>
-          <tbody id="cat-tbody"></tbody>
-        </table>
-        <div id="cat-empty" style="display:none; color:#8fa3b8; font-size:13.5px; padding:12px 0;">
-          Nenhum mapeamento cadastrado ainda.
+      <!-- ── ABA: Por Tipo ── -->
+      <div id="cat-tab-tipo" style="display:none;">
+        <div class="card">
+          <h2>Adicionar / Atualizar — Por Security Type</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label>Security Type</label>
+              <input type="text" id="tipo-key" placeholder="Ex: DEBENTURE_HY" autocomplete="off" style="text-transform:uppercase;" />
+              <div class="hint">Código técnico retornado pela API Gorila.</div>
+            </div>
+            <div class="field">
+              <label>Classe de Ativo</label>
+              <select id="tipo-classe">
+                <option value="">Selecione...</option>
+                <option>Renda fixa pública (Tesouro Direto / LFT / LTN / NTN-B)</option>
+                <option>Renda fixa privada com grau de investimento</option>
+                <option>Renda fixa privada sem grau de investimento</option>
+                <option>Renda fixa bancária (CDB/LCI/LCA/LF/outros) com cobertura FGC</option>
+                <option>Saldo em Conta</option>
+                <option>Fundos de renda fixa referenciados DI</option>
+                <option>Fundos de renda fixa ativa / crédito</option>
+                <option>Fundos multimercado / macro</option>
+                <option>Fundos FIDC</option>
+                <option>Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)</option>
+                <option>Renda Variável (ETFs de Renda Fixa)</option>
+                <option>Ativos no exterior</option>
+                <option>Derivativos</option>
+                <option>Criptoativos</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:18px; display:flex; align-items:center; gap:14px;">
+            <button class="btn btn-primary" onclick="salvarTypeMapping()">Salvar</button>
+            <span id="cat-tipo-status" style="font-size:13.5px; display:none;"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Cadastrados por security type <span id="tipo-count" style="font-weight:400; font-size:12px; color:#8fa3b8; text-transform:none; letter-spacing:0;"></span></h2>
+          <div id="tipo-loading" style="color:#8fa3b8; font-size:13.5px; padding:12px 0;">Carregando...</div>
+          <table id="tipo-table" style="display:none; width:100%; border-collapse:collapse; font-size:13.5px;">
+            <thead>
+              <tr style="background:#1B3A5C; color:#fff; text-align:left;">
+                <th style="padding:10px 14px; font-weight:700;">Security Type</th>
+                <th style="padding:10px 14px; font-weight:700;">Classe de Ativo</th>
+                <th style="padding:10px 14px; font-weight:700; width:60px;"></th>
+              </tr>
+            </thead>
+            <tbody id="tipo-tbody"></tbody>
+          </table>
+          <div id="tipo-empty" style="display:none; color:#8fa3b8; font-size:13.5px; padding:12px 0;">Nenhum mapeamento cadastrado ainda.</div>
         </div>
       </div>
+
     </div><!-- /page-categorizacao -->
 
 
@@ -666,19 +732,43 @@
   }
 
   // ── Fluxo de Categorização ───────────────────────
-  async function carregarNameMappings() {
-    const loading = document.getElementById('cat-loading');
-    const table   = document.getElementById('cat-table');
-    const empty   = document.getElementById('cat-empty');
-    const count   = document.getElementById('cat-count');
-    const tbody   = document.getElementById('cat-tbody');
+  function switchCatTab(tab) {
+    document.getElementById('cat-tab-nome').style.display = tab === 'nome' ? 'block' : 'none';
+    document.getElementById('cat-tab-tipo').style.display = tab === 'tipo' ? 'block' : 'none';
+    const btnNome = document.getElementById('tab-btn-nome');
+    const btnTipo = document.getElementById('tab-btn-tipo');
+    btnNome.style.color       = tab === 'nome' ? '#1B3A5C' : '#8fa3b8';
+    btnNome.style.borderBottom = tab === 'nome' ? '3px solid #1B3A5C' : '3px solid transparent';
+    btnTipo.style.color       = tab === 'tipo' ? '#1B3A5C' : '#8fa3b8';
+    btnTipo.style.borderBottom = tab === 'tipo' ? '3px solid #1B3A5C' : '3px solid transparent';
+    if (tab === 'tipo') carregarTypeMappings();
+  }
+
+  function carregarNameMappings() {
+    _carregarMappings('/api/name-mappings', 'cat-loading', 'cat-table', 'cat-empty', 'cat-count', 'cat-tbody',
+      m => ({ key: m.asset_name, val: m.asset_class }),
+      nome => deletarNameMapping(nome));
+  }
+
+  function carregarTypeMappings() {
+    _carregarMappings('/api/mappings', 'tipo-loading', 'tipo-table', 'tipo-empty', 'tipo-count', 'tipo-tbody',
+      m => ({ key: m.security_type, val: m.asset_class }),
+      tipo => deletarTypeMapping(tipo));
+  }
+
+  async function _carregarMappings(url, loadId, tableId, emptyId, countId, tbodyId, mapper, onDelete) {
+    const loading = document.getElementById(loadId);
+    const table   = document.getElementById(tableId);
+    const empty   = document.getElementById(emptyId);
+    const count   = document.getElementById(countId);
+    const tbody   = document.getElementById(tbodyId);
 
     loading.style.display = 'block';
     table.style.display   = 'none';
     empty.style.display   = 'none';
 
     try {
-      const res  = await fetch('/api/name-mappings');
+      const res  = await fetch(url);
       const data = await res.json();
       loading.style.display = 'none';
 
@@ -692,14 +782,16 @@
       tbody.innerHTML   = '';
 
       data.mappings.forEach((m, i) => {
+        const { key, val } = mapper(m);
         const bg = i % 2 === 1 ? '#f4f8fc' : '#fff';
         const tr = document.createElement('tr');
         tr.style.background = bg;
+        const safeKey = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         tr.innerHTML = `
-          <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; font-weight:600;">${m.asset_name}</td>
-          <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">${m.asset_class}</td>
+          <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; font-weight:600;">${key}</td>
+          <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">${val}</td>
           <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; text-align:center;">
-            <button onclick="deletarNameMapping('${m.asset_name.replace(/'/g, "\\'")}')"
+            <button onclick="(${onDelete.toString()})('${safeKey}')"
               style="background:none;border:none;cursor:pointer;font-size:15px;opacity:.55;transition:opacity .15s;"
               title="Remover" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.55">🗑️</button>
           </td>`;
@@ -715,48 +807,59 @@
   async function salvarNameMapping() {
     const nome   = document.getElementById('cat-nome').value.trim();
     const classe = document.getElementById('cat-classe').value;
-    const status = document.getElementById('cat-status');
-
-    if (!nome || !classe) {
-      mostrarCatStatus('error', 'Preencha o nome e a classe.');
-      return;
-    }
-
-    try {
-      const res  = await fetch('/api/name-mappings', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ asset_name: nome, asset_class: classe })
-      });
-      const data = await res.json();
-
-      if (data.ok) {
-        mostrarCatStatus('success', `"${nome}" salvo com sucesso.`);
-        document.getElementById('cat-nome').value   = '';
-        document.getElementById('cat-classe').value = '';
-        carregarNameMappings();
-      } else {
-        mostrarCatStatus('error', data.erro || 'Erro ao salvar.');
-      }
-    } catch (e) {
-      mostrarCatStatus('error', 'Erro de conexão.');
+    if (!nome || !classe) { mostrarStatus('cat-nome-status', 'error', 'Preencha o nome e a classe.'); return; }
+    const res  = await fetch('/api/name-mappings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ asset_name: nome, asset_class: classe })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarStatus('cat-nome-status', 'success', `"${nome}" salvo.`);
+      document.getElementById('cat-nome').value = '';
+      document.getElementById('cat-classe').value = '';
+      carregarNameMappings();
+    } else {
+      mostrarStatus('cat-nome-status', 'error', data.erro || 'Erro ao salvar.');
     }
   }
 
   async function deletarNameMapping(nome) {
     if (!confirm(`Remover mapeamento de "${nome}"?`)) return;
-    try {
-      const res  = await fetch('/api/name-mappings/' + encodeURIComponent(nome), { method: 'DELETE' });
-      const data = await res.json();
-      if (data.ok) carregarNameMappings();
-      else alert('Erro ao remover: ' + (data.erro || ''));
-    } catch (e) {
-      alert('Erro de conexão.');
+    const res  = await fetch('/api/name-mappings/' + encodeURIComponent(nome), { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) carregarNameMappings();
+    else alert('Erro: ' + (data.erro || ''));
+  }
+
+  async function salvarTypeMapping() {
+    const tipo   = document.getElementById('tipo-key').value.trim().toUpperCase();
+    const classe = document.getElementById('tipo-classe').value;
+    if (!tipo || !classe) { mostrarStatus('cat-tipo-status', 'error', 'Preencha o tipo e a classe.'); return; }
+    const res  = await fetch('/api/mappings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ security_type: tipo, asset_class: classe })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarStatus('cat-tipo-status', 'success', `"${tipo}" salvo.`);
+      document.getElementById('tipo-key').value = '';
+      document.getElementById('tipo-classe').value = '';
+      carregarTypeMappings();
+    } else {
+      mostrarStatus('cat-tipo-status', 'error', data.erro || 'Erro ao salvar.');
     }
   }
 
-  function mostrarCatStatus(tipo, msg) {
-    const el = document.getElementById('cat-status');
+  async function deletarTypeMapping(tipo) {
+    if (!confirm(`Remover mapeamento de "${tipo}"?`)) return;
+    const res  = await fetch('/api/mappings/' + encodeURIComponent(tipo), { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) carregarTypeMappings();
+    else alert('Erro: ' + (data.erro || ''));
+  }
+
+  function mostrarStatus(elId, tipo, msg) {
+    const el = document.getElementById(elId);
     el.style.display = 'inline';
     el.style.color   = tipo === 'success' ? '#1a7a4a' : '#c0392b';
     el.textContent   = msg;
