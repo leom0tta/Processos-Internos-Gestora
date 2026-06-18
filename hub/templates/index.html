@@ -377,6 +377,10 @@
           style="padding:10px 22px; border:none; background:none; cursor:pointer; font-size:13.5px; font-weight:700; color:#8fa3b8; border-bottom:3px solid transparent; margin-bottom:-2px; font-family:Arial,sans-serif;">
           Por Security Type
         </button>
+        <button id="tab-btn-fundquote" onclick="switchCatTab('fundquote')"
+          style="padding:10px 22px; border:none; background:none; cursor:pointer; font-size:13.5px; font-weight:700; color:#8fa3b8; border-bottom:3px solid transparent; margin-bottom:-2px; font-family:Arial,sans-serif;">
+          FUNDQUOTE
+        </button>
       </div>
 
       <!-- ── ABA: Por Nome ── -->
@@ -484,6 +488,60 @@
             <tbody id="tipo-tbody"></tbody>
           </table>
           <div id="tipo-empty" style="display:none; color:#8fa3b8; font-size:13.5px; padding:12px 0;">Nenhum mapeamento cadastrado ainda.</div>
+        </div>
+      </div>
+
+      <!-- ── ABA: FUNDQUOTE ── -->
+      <div id="cat-tab-fundquote" style="display:none;">
+        <div class="card">
+          <h2>FUNDQUOTE — Classificação por AssetClass</h2>
+          <p style="font-size:13.5px; color:#4a5568; margin-bottom:20px; line-height:1.6;">
+            Quando a Gorila retorna <strong>type: FUNDQUOTE</strong>, o campo <code style="background:#f0f4f8; padding:2px 6px; border-radius:4px; font-size:12.5px;">security_type</code> não é informativo.
+            Nesses casos o sistema usa o <code style="background:#f0f4f8; padding:2px 6px; border-radius:4px; font-size:12.5px;">assetClass</code> da Gorila para classificar automaticamente.
+            Este mapeamento é fixo — para sobrescrever um fundo específico, use a aba <strong>Por Nome de Ativo</strong>.
+          </p>
+          <table style="width:100%; border-collapse:collapse; font-size:13.5px;">
+            <thead>
+              <tr style="background:#1B3A5C; color:#fff; text-align:left;">
+                <th style="padding:10px 14px; font-weight:700;">AssetClass (Gorila)</th>
+                <th style="padding:10px 14px; font-weight:700;">Classe de Ativo (Suitability)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background:#fff;">
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">FIXED_INCOME</code></td>
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">Fundos de renda fixa ativa / crédito</td>
+              </tr>
+              <tr style="background:#f4f8fc;">
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">MULTIMARKET</code></td>
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">Fundos multimercado / macro</td>
+              </tr>
+              <tr style="background:#fff;">
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">STOCKS</code></td>
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)</td>
+              </tr>
+              <tr style="background:#f4f8fc;">
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">OFFSHORE</code></td>
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">Ativos no exterior</td>
+              </tr>
+              <tr style="background:#fff;">
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">CRYPTO</code></td>
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">Criptoativos</td>
+              </tr>
+              <tr style="background:#f4f8fc;">
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">CASH</code></td>
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">Saldo em Conta</td>
+              </tr>
+              <tr style="background:#fff;">
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">CURRENCY</code></td>
+                <td style="padding:9px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">Ativos no exterior</td>
+              </tr>
+              <tr style="background:#f4f8fc;">
+                <td style="padding:9px 14px;"><code style="background:#f0f4f8; padding:2px 6px; border-radius:4px;">TANGIBLE</code></td>
+                <td style="padding:9px 14px; color:#4a5568;">Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -733,14 +791,12 @@
 
   // ── Fluxo de Categorização ───────────────────────
   function switchCatTab(tab) {
-    document.getElementById('cat-tab-nome').style.display = tab === 'nome' ? 'block' : 'none';
-    document.getElementById('cat-tab-tipo').style.display = tab === 'tipo' ? 'block' : 'none';
-    const btnNome = document.getElementById('tab-btn-nome');
-    const btnTipo = document.getElementById('tab-btn-tipo');
-    btnNome.style.color       = tab === 'nome' ? '#1B3A5C' : '#8fa3b8';
-    btnNome.style.borderBottom = tab === 'nome' ? '3px solid #1B3A5C' : '3px solid transparent';
-    btnTipo.style.color       = tab === 'tipo' ? '#1B3A5C' : '#8fa3b8';
-    btnTipo.style.borderBottom = tab === 'tipo' ? '3px solid #1B3A5C' : '3px solid transparent';
+    ['nome', 'tipo', 'fundquote'].forEach(t => {
+      document.getElementById('cat-tab-' + t).style.display = tab === t ? 'block' : 'none';
+      const btn = document.getElementById('tab-btn-' + t);
+      btn.style.color       = tab === t ? '#1B3A5C' : '#8fa3b8';
+      btn.style.borderBottom = tab === t ? '3px solid #1B3A5C' : '3px solid transparent';
+    });
     if (tab === 'tipo') carregarTypeMappings();
   }
 

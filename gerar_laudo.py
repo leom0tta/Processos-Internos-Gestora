@@ -233,11 +233,27 @@ class GorilaLaudo:
             logger.error(f"Erro ao buscar valores de mercado: {e}")
             return {}
 
-    def mapear_tipo_para_classe(self, security_type: str, security_name: str) -> Tuple[str, bool]:
+    # Mapeamento assetClass → classe para ativos do tipo FUNDQUOTE.
+    # A Gorila usa FUNDQUOTE como type genérico para fundos; o assetClass
+    # é o campo informativo real nesses casos.
+    FUNDQUOTE_ASSETCLASS_MAP = {
+        'FIXED_INCOME': 'Fundos de renda fixa ativa / crédito',
+        'MULTIMARKET':  'Fundos multimercado / macro',
+        'STOCKS':       'Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)',
+        'OFFSHORE':     'Ativos no exterior',
+        'CRYPTO':       'Criptoativos',
+        'CASH':         'Saldo em Conta',
+        'CURRENCY':     'Ativos no exterior',
+        'TANGIBLE':     'Renda variável (fundos, ações, FIIs, ETFs, exceto de renda fixa)',
+    }
+
+    def mapear_tipo_para_classe(self, security_type: str, security_name: str,
+                                gorila_asset_class: str = '') -> Tuple[str, bool]:
         """
         Mapeia ativo para classe, com prioridade:
           1. Nome do ativo (asset_name_mapping)
-          2. Tipo do ativo (asset_type_mapping)
+          2. Se type == FUNDQUOTE → usa assetClass via FUNDQUOTE_ASSETCLASS_MAP
+          3. security_type mapping (asset_type_mapping)
         Retorna (classe, foi_encontrado)
         """
         # Prioridade 1: nome exato do ativo
@@ -245,7 +261,14 @@ class GorilaLaudo:
         if security_name and security_name in name_mappings:
             return name_mappings[security_name], True
 
-        # Prioridade 2: security_type
+        # Prioridade 2: FUNDQUOTE → classifica pelo assetClass da Gorila
+        if security_type == 'FUNDQUOTE' and gorila_asset_class:
+            classe = self.FUNDQUOTE_ASSETCLASS_MAP.get(gorila_asset_class)
+            if classe:
+                logger.info(f"FUNDQUOTE classificado por assetClass '{gorila_asset_class}': {security_name} → {classe}")
+                return classe, True
+
+        # Prioridade 3: security_type mapping
         type_mappings = self.asset_type_mapping.get('mappings', {})
         if security_type in type_mappings:
             return type_mappings[security_type], True
@@ -323,13 +346,16 @@ class GorilaLaudo:
         vistos               = set()   # evita duplicatas (chave: security_name ou security_type)
 
         for posicao in posicoes:
-            security      = posicao.get('security', {})
-            security_type = security.get('type', 'UNKNOWN')
-            security_name = security.get('name', 'N/A')
-            security_id   = security.get('id')
+            security           = posicao.get('security', {})
+            security_type      = security.get('type', 'UNKNOWN')
+            security_name      = security.get('name', 'N/A')
+            security_id        = security.get('id')
+            gorila_asset_class = security.get('assetClass', '')
 
-            # Tentativa via BD (prioridade nome → tipo)
-            classe, foi_encontrado = self.mapear_tipo_para_classe(security_type, security_name)
+            # Tentativa via BD (prioridade: nome → FUNDQUOTE/assetClass → tipo)
+            classe, foi_encontrado = self.mapear_tipo_para_classe(
+                security_type, security_name, gorila_asset_class
+            )
 
             if not foi_encontrado:
                 # Fallback 1: mapeamento manual por nome (fornecido pelo usuário nesta chamada)
