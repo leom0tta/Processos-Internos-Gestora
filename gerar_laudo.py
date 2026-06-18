@@ -281,6 +281,25 @@ class GorilaLaudo:
         logger.warning(f"Ativo não mapeado: {security_type} ({security_name})")
         return None, False
 
+    # Tipos que representam fundos (sujeitos à regra de liquidez D+0 → DI)
+    _FUND_TYPES = {
+        'FUNDQUOTE', 'DI_FUND', 'FIXED_INCOME_FUND', 'CREDIT_FUND',
+        'MULTIMARKET_FUND', 'MACRO_FUND', 'HEDGE_FUND', 'EQUITY_FUND',
+        'PRIVATE_EQUITY_FUND', 'INFRASTRUCTURE_FUND', 'REAL_ESTATE_FUND',
+        'INTERNATIONAL_FUND', 'CRYPTO_FUND', 'FIDC',
+    }
+
+    def _is_fund_type(self, security_type: str) -> bool:
+        return security_type.upper() in self._FUND_TYPES or 'FUND' in security_type.upper()
+
+    def _is_liquidez_d0(self, security: dict) -> bool:
+        """Retorna True apenas se o ativo tiver liquidez D+0 no guia de fundos."""
+        cnpj_raw = security.get('cnpj', '') or security.get('taxId', '') or ''
+        cnpj = ''.join(filter(str.isdigit, str(cnpj_raw))).zfill(14)
+        if not cnpj or cnpj not in self.mapa_liquidacao:
+            return False
+        return self.mapa_liquidacao[cnpj].strip().upper().startswith('D+0')
+
     def pedir_mapeamento_usuario(self, security_type: str, security_name: str, classes_disponiveis: List[str]) -> str:
         """Pede ao usuário para mapear um novo tipo de segurança"""
         print("\n" + "="*80)
@@ -352,10 +371,22 @@ class GorilaLaudo:
             security_id        = security.get('id')
             gorila_asset_class = security.get('assetClass', '')
 
-            # Tentativa via BD (prioridade: nome → FUNDQUOTE/assetClass → tipo)
+            # Flag: classificação veio de name mapping (não deve ser refinada por liquidez)
+            from_name_mapping = bool(
+                security_name and
+                security_name in self.asset_name_mapping.get('mappings', {})
+            )
+
+            # Classificação principal: nome → FUNDQUOTE/assetClass → tipo
             classe, foi_encontrado = self.mapear_tipo_para_classe(
                 security_type, security_name, gorila_asset_class
             )
+
+            # Refinamento: fundo com liquidez D+0 → DI (exceto quando veio de name mapping)
+            if foi_encontrado and not from_name_mapping and self._is_fund_type(security_type):
+                if self._is_liquidez_d0(security):
+                    logger.info(f"Fundo D+0 → DI: {security_name}")
+                    classe = 'Fundos de renda fixa referenciados DI'
 
             if not foi_encontrado:
                 # Fallback 1: mapeamento manual por nome (fornecido pelo usuário nesta chamada)
