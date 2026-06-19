@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 class GorilaLaudo:
     """Classe para gerar laudo de carteira usando dados da API Gorila"""
 
-    def __init__(self, env_path: str = ".env", asset_type_mapping: dict = None, asset_name_mapping: dict = None):
+    def __init__(self, env_path: str = ".env", asset_type_mapping: dict = None, asset_name_mapping: dict = None, liquidity_mapping: dict = None):
         # Carrega .env apenas se existir (local). No Render, as variáveis já estão no ambiente.
         env_file = Path(env_path)
         if env_file.exists():
@@ -81,6 +81,8 @@ class GorilaLaudo:
 
         # Mapeamentos por nome de ativo (prioridade sobre security_type)
         self.asset_name_mapping = asset_name_mapping if asset_name_mapping is not None else {'mappings': {}}
+        # Mapeamentos manuais de liquidez por nome de ativo (prioridade máxima em classificar_liquidez)
+        self.liquidity_mapping = liquidity_mapping if liquidity_mapping is not None else {'mappings': {}}
 
         # Carregar guia de fundos para liquidação
         # Aceita variável de ambiente GUIA_FUNDOS_PATH; se não definida, usa pasta guia-de-fundos/ relativa ao script
@@ -465,46 +467,62 @@ class GorilaLaudo:
 
         return analise
 
+    # Faixas de prazo em dias para renda fixa e fundos
+    @staticmethod
+    def _faixa_prazo(dias: int) -> str:
+        if dias <= 1:
+            return "Disponível (D+0 / D+1)"
+        elif dias <= 30:
+            return "Curto Prazo (D+2 a D+30)"
+        elif dias <= 90:
+            return "Médio Prazo (D+31 a D+90)"
+        elif dias <= 365:
+            return "Longo Prazo (91 dias a 1 ano)"
+        elif dias <= 730:
+            return "Longo Prazo (1 a 2 anos)"
+        elif dias <= 1825:
+            return "Longo Prazo (2 a 5 anos)"
+        else:
+            return "RF — vencimento determinado"
+
     def classificar_liquidez(self, security: dict) -> str:
         """
-        Classifica a liquidez de um ativo baseado em:
-        1. Guia de fundos (se for um fundo)
-        2. Tipo e vencimento (fallback)
-        Retorna categoria de liquidez.
+        Classifica a liquidez de um ativo em ordem de prioridade:
+        1. Mapeamento manual por nome (liquidity_mapping do BD)
+        2. Guia de fundos XP (por CNPJ)
+        3. Fallback por tipo/vencimento
         """
+        import re
+
         security_name = security.get('name', '').strip()
-        asset_class = security.get('assetClass', '')
+        asset_class   = security.get('assetClass', '')
         security_type = security.get('type', '')
         maturity_date = security.get('maturityDate')
 
-        # Normaliza CNPJ: aceita tanto com pontuação quanto só dígitos; zero-preenche para 14 dígitos
+        # PRIORIDADE 1: mapeamento manual por nome
+        liq_map = self.liquidity_mapping.get('mappings', {})
+        if security_name and security_name in liq_map:
+            return liq_map[security_name]
+
+        # Normaliza CNPJ
         _cnpj_raw = security.get('cnpj', '') or security.get('taxId', '') or ''
         security_cnpj = ''.join(filter(str.isdigit, str(_cnpj_raw))).zfill(14)
 
-        # PRIMEIRO: Verificar no guia de fundos
+        # PRIORIDADE 2: Guia de fundos XP (por CNPJ)
         if security_cnpj and security_cnpj in self.mapa_liquidacao:
-            liquidacao_guia = self.mapa_liquidacao[security_cnpj]
+            liquidacao_guia  = self.mapa_liquidacao[security_cnpj]
+            liquidacao_upper = liquidacao_guia.strip().upper()
 
-            # Mapear liquidação do guia para categorias padrão
-            liquidacao_upper = liquidacao_guia.upper()
-
-            if liquidacao_upper.startswith('D+0'):
-                return "Disponível (D+0 / D+1)"
-            elif liquidacao_upper.startswith('D+1'):
-                return "Disponível (D+0 / D+1)"
-            elif liquidacao_upper.startswith('D+2') or liquidacao_upper.startswith('D+3'):
-                return "Curto Prazo (D+2 a D+30)"
-            elif liquidacao_upper.startswith('D+') and any(c.isdigit() for c in liquidacao_upper):
-                # D+4, D+5, D+6 em diante
-                return "Médio Prazo (D+31 a D+90)"
-            elif liquidacao_upper.startswith('D+30'):
-                return "Médio Prazo (D+31 a D+90)"
-            elif liquidacao_upper == '-':
+            if liquidacao_upper == '-':
                 return "Sem liquidez (ilíquido)"
 
-        # FALLBACK: Lógica baseada em tipo de ativo
+            match = re.search(r'D\+(\d+)', liquidacao_upper)
+            if match:
+                return self._faixa_prazo(int(match.group(1)))
 
-        # Tangíveis/Custom (prioridade sobre renda fixa)
+        # PRIORIDADE 3: Fallback por tipo/vencimento
+
+        # Tangíveis/Custom
         if asset_class in ['TANGIBLE'] or 'CUSTOM' in security_type.upper():
             return "Sem liquidez (ilíquido)"
 
@@ -518,14 +536,7 @@ class GorilaLaudo:
                 try:
                     mat_date = datetime.strptime(maturity_date, '%Y-%m-%d')
                     dias = (mat_date - datetime.now()).days
-                    if dias <= 1:
-                        return "Disponível (D+0 / D+1)"
-                    elif dias <= 30:
-                        return "Curto Prazo (D+2 a D+30)"
-                    elif dias <= 90:
-                        return "Médio Prazo (D+31 a D+90)"
-                    else:
-                        return "RF — vencimento determinado"
+                    return self._faixa_prazo(dias)
                 except (ValueError, TypeError):
                     pass
             return "RF — vencimento determinado"
@@ -750,8 +761,11 @@ class GorilaLaudo:
             "Disponível (D+0 / D+1)",
             "Curto Prazo (D+2 a D+30)",
             "Médio Prazo (D+31 a D+90)",
+            "Longo Prazo (91 dias a 1 ano)",
+            "Longo Prazo (1 a 2 anos)",
+            "Longo Prazo (2 a 5 anos)",
             "RF — vencimento determinado",
-            "Sem liquidez (ilíquido)"
+            "Sem liquidez (ilíquido)",
         ]
 
         for cat in categorias:

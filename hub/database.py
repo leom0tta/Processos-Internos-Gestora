@@ -42,6 +42,22 @@ class AssetNameMapping(db.Model):
         }
 
 
+class LiquidityMapping(db.Model):
+    """Mapeamento manual de nome de ativo → categoria de liquidez (prioridade sobre guia e fallback)"""
+    __tablename__ = 'liquidity_mappings'
+
+    asset_name         = db.Column(db.String(255), primary_key=True)
+    liquidity_category = db.Column(db.String(255), nullable=False)
+    created_at         = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at         = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'asset_name':         self.asset_name,
+            'liquidity_category': self.liquidity_category,
+        }
+
+
 class Cliente(db.Model):
     """Cadastro de clientes da gestora"""
     __tablename__ = 'clientes'

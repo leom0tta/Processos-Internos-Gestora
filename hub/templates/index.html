@@ -381,6 +381,10 @@
           style="padding:10px 22px; border:none; background:none; cursor:pointer; font-size:13.5px; font-weight:700; color:#8fa3b8; border-bottom:3px solid transparent; margin-bottom:-2px; font-family:Arial,sans-serif;">
           FUNDQUOTE
         </button>
+        <button id="tab-btn-liquidez" onclick="switchCatTab('liquidez')"
+          style="padding:10px 22px; border:none; background:none; cursor:pointer; font-size:13.5px; font-weight:700; color:#8fa3b8; border-bottom:3px solid transparent; margin-bottom:-2px; font-family:Arial,sans-serif;">
+          Liquidez Manual
+        </button>
       </div>
 
       <!-- ── ABA: Por Nome ── -->
@@ -544,6 +548,59 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- ── ABA: Liquidez Manual ── -->
+      <div id="cat-tab-liquidez" style="display:none;">
+        <div class="card">
+          <h2>Sobrescrever Liquidez — Por Nome de Ativo</h2>
+          <p style="font-size:13.5px; color:#4a5568; margin-bottom:20px; line-height:1.6;">
+            Defina manualmente a categoria de liquidez de um ativo específico.
+            Tem <strong>prioridade máxima</strong> sobre o Guia de Fundos e a classificação automática.
+            Útil para FIPs, debêntures e outros ativos não presentes no guia.
+          </p>
+          <div class="form-grid">
+            <div class="field">
+              <label>Nome do Ativo</label>
+              <input type="text" id="liq-nome" placeholder="Ex: Fundo XYZ FIP" autocomplete="off" />
+              <div class="hint">Exatamente como aparece na carteira Gorila.</div>
+            </div>
+            <div class="field">
+              <label>Categoria de Liquidez</label>
+              <select id="liq-categoria">
+                <option value="">Selecione...</option>
+                <option>Disponível (D+0 / D+1)</option>
+                <option>Curto Prazo (D+2 a D+30)</option>
+                <option>Médio Prazo (D+31 a D+90)</option>
+                <option>Longo Prazo (91 dias a 1 ano)</option>
+                <option>Longo Prazo (1 a 2 anos)</option>
+                <option>Longo Prazo (2 a 5 anos)</option>
+                <option>RF — vencimento determinado</option>
+                <option>Sem liquidez (ilíquido)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:18px; display:flex; align-items:center; gap:14px;">
+            <button class="btn btn-primary" onclick="salvarLiquidityMapping()">Salvar</button>
+            <span id="liq-status" style="font-size:13.5px; display:none;"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Cadastrados <span id="liq-count" style="font-weight:400; font-size:12px; color:#8fa3b8; text-transform:none; letter-spacing:0;"></span></h2>
+          <div id="liq-loading" style="color:#8fa3b8; font-size:13.5px; padding:12px 0;">Carregando...</div>
+          <table id="liq-table" style="display:none; width:100%; border-collapse:collapse; font-size:13.5px;">
+            <thead>
+              <tr style="background:#1B3A5C; color:#fff; text-align:left;">
+                <th style="padding:10px 14px; font-weight:700;">Nome do Ativo</th>
+                <th style="padding:10px 14px; font-weight:700;">Categoria de Liquidez</th>
+                <th style="padding:10px 14px; font-weight:700; width:60px;"></th>
+              </tr>
+            </thead>
+            <tbody id="liq-tbody"></tbody>
+          </table>
+          <div id="liq-empty" style="display:none; color:#8fa3b8; font-size:13.5px; padding:12px 0;">Nenhum mapeamento de liquidez cadastrado ainda.</div>
         </div>
       </div>
 
@@ -793,13 +850,14 @@
 
   // ── Fluxo de Categorização ───────────────────────
   function switchCatTab(tab) {
-    ['nome', 'tipo', 'fundquote'].forEach(t => {
+    ['nome', 'tipo', 'fundquote', 'liquidez'].forEach(t => {
       document.getElementById('cat-tab-' + t).style.display = tab === t ? 'block' : 'none';
       const btn = document.getElementById('tab-btn-' + t);
-      btn.style.color       = tab === t ? '#1B3A5C' : '#8fa3b8';
+      btn.style.color        = tab === t ? '#1B3A5C' : '#8fa3b8';
       btn.style.borderBottom = tab === t ? '3px solid #1B3A5C' : '3px solid transparent';
     });
-    if (tab === 'tipo') carregarTypeMappings();
+    if (tab === 'tipo')    carregarTypeMappings();
+    if (tab === 'liquidez') carregarLiquidityMappings();
   }
 
   function carregarNameMappings() {
@@ -913,6 +971,39 @@
     const res  = await fetch('/api/mappings/' + encodeURIComponent(tipo), { method: 'DELETE' });
     const data = await res.json();
     if (data.ok) carregarTypeMappings();
+    else alert('Erro: ' + (data.erro || ''));
+  }
+
+  function carregarLiquidityMappings() {
+    _carregarMappings('/api/liquidity-mappings', 'liq-loading', 'liq-table', 'liq-empty', 'liq-count', 'liq-tbody',
+      m => ({ key: m.asset_name, val: m.liquidity_category }),
+      nome => deletarLiquidityMapping(nome));
+  }
+
+  async function salvarLiquidityMapping() {
+    const nome      = document.getElementById('liq-nome').value.trim();
+    const categoria = document.getElementById('liq-categoria').value;
+    if (!nome || !categoria) { mostrarStatus('liq-status', 'error', 'Preencha o nome e a categoria.'); return; }
+    const res  = await fetch('/api/liquidity-mappings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ asset_name: nome, liquidity_category: categoria })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarStatus('liq-status', 'success', `"${nome}" salvo.`);
+      document.getElementById('liq-nome').value      = '';
+      document.getElementById('liq-categoria').value = '';
+      carregarLiquidityMappings();
+    } else {
+      mostrarStatus('liq-status', 'error', data.erro || 'Erro ao salvar.');
+    }
+  }
+
+  async function deletarLiquidityMapping(nome) {
+    if (!confirm(`Remover mapeamento de liquidez de "${nome}"?`)) return;
+    const res  = await fetch('/api/liquidity-mappings/' + encodeURIComponent(nome), { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) carregarLiquidityMappings();
     else alert('Erro: ' + (data.erro || ''));
   }
 

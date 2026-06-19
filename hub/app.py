@@ -52,7 +52,7 @@ if DATABASE_URL.startswith('postgres://'):
 if DATABASE_URL:
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    from database import db, AssetTypeMapping, AssetNameMapping, Cliente
+    from database import db, AssetTypeMapping, AssetNameMapping, LiquidityMapping, Cliente
     db.init_app(app)
     with app.app_context():
         db.create_all()
@@ -103,19 +103,25 @@ def login_required(f):
     return decorated
 
 
-def get_system(asset_type_mapping=None, asset_name_mapping=None):
+def get_system(asset_type_mapping=None, asset_name_mapping=None, liquidity_mapping=None):
     """Inicializa o GorilaLaudo, injetando mappings do BD se disponível"""
     from gerar_laudo import GorilaLaudo
-    return GorilaLaudo(ENV_PATH, asset_type_mapping=asset_type_mapping, asset_name_mapping=asset_name_mapping)
+    return GorilaLaudo(
+        ENV_PATH,
+        asset_type_mapping=asset_type_mapping,
+        asset_name_mapping=asset_name_mapping,
+        liquidity_mapping=liquidity_mapping,
+    )
 
 
 def load_mappings_from_db():
-    """Carrega ambos os mappings do BD. Retorna (type_mapping, name_mapping)."""
+    """Carrega todos os mappings do BD. Retorna (type_mapping, name_mapping, liquidity_mapping)."""
     if not USE_DB:
-        return None, None
-    type_map = {'mappings': {r.security_type: r.asset_class for r in AssetTypeMapping.query.all()}}
-    name_map = {'mappings': {r.asset_name: r.asset_class for r in AssetNameMapping.query.all()}}
-    return type_map, name_map
+        return None, None, None
+    type_map      = {'mappings': {r.security_type: r.asset_class         for r in AssetTypeMapping.query.all()}}
+    name_map      = {'mappings': {r.asset_name:    r.asset_class         for r in AssetNameMapping.query.all()}}
+    liquidity_map = {'mappings': {r.asset_name:    r.liquidity_category  for r in LiquidityMapping.query.all()}}
+    return type_map, name_map, liquidity_map
 
 
 # ============================================================
@@ -339,6 +345,55 @@ def api_name_mappings_delete(asset_name):
 
 
 # ============================================================
+# API — MAPEAMENTOS DE LIQUIDEZ
+# ============================================================
+
+@app.route("/api/liquidity-mappings", methods=["GET"])
+@login_required
+def api_liquidity_mappings_list():
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    rows = LiquidityMapping.query.order_by(LiquidityMapping.asset_name).all()
+    return jsonify({"ok": True, "mappings": [r.to_dict() for r in rows]})
+
+
+@app.route("/api/liquidity-mappings", methods=["POST"])
+@login_required
+def api_liquidity_mappings_upsert():
+    """Cria ou atualiza um mapeamento de liquidez por nome de ativo"""
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    data               = request.get_json()
+    asset_name         = data.get("asset_name", "").strip()
+    liquidity_category = data.get("liquidity_category", "").strip()
+    if not asset_name or not liquidity_category:
+        return jsonify({"ok": False, "erro": "asset_name e liquidity_category são obrigatórios."}), 400
+
+    row = LiquidityMapping.query.get(asset_name)
+    if row:
+        row.liquidity_category = liquidity_category
+        row.updated_at         = datetime.utcnow()
+    else:
+        db.session.add(LiquidityMapping(asset_name=asset_name, liquidity_category=liquidity_category))
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/liquidity-mappings/<path:asset_name>", methods=["DELETE"])
+@login_required
+def api_liquidity_mappings_delete(asset_name):
+    """Remove um mapeamento de liquidez"""
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+    row = LiquidityMapping.query.get(asset_name)
+    if not row:
+        return jsonify({"ok": False, "erro": "Mapeamento não encontrado."}), 404
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# ============================================================
 # API — LAUDO
 # ============================================================
 
@@ -346,8 +401,8 @@ def api_name_mappings_delete(asset_name):
 @login_required
 def api_portfolios():
     try:
-        type_map, name_map = load_mappings_from_db()
-        system = get_system(asset_type_mapping=type_map, asset_name_mapping=name_map)
+        type_map, name_map, liq_map = load_mappings_from_db()
+        system = get_system(asset_type_mapping=type_map, asset_name_mapping=name_map, liquidity_mapping=liq_map)
         portfolios = system.buscar_portfolios()
         return jsonify({"ok": True, "portfolios": portfolios})
     except Exception as e:
@@ -370,8 +425,8 @@ def api_gerar_laudo():
         return jsonify({"ok": False, "erro": "Perfil inválido."}), 400
 
     try:
-        type_map, name_map = load_mappings_from_db()
-        system = get_system(asset_type_mapping=type_map, asset_name_mapping=name_map)
+        type_map, name_map, liq_map = load_mappings_from_db()
+        system = get_system(asset_type_mapping=type_map, asset_name_mapping=name_map, liquidity_mapping=liq_map)
 
         posicoes        = system.buscar_posicoes(portfolio_id)
         valores_mercado = system.buscar_valores_mercado(portfolio_id)
