@@ -235,6 +235,9 @@ class GorilaLaudo:
             logger.error(f"Erro ao buscar valores de mercado: {e}")
             return {}
 
+    # Categoria sentinel para fundos sem liquidez determinada no guia
+    LIQUIDITY_UNKNOWN = "Sem Vencimento Registrado — Cadastrar Manualmente"
+
     # Mapeamento assetClass → classe para ativos do tipo FUNDQUOTE.
     # A Gorila usa FUNDQUOTE como type genérico para fundos; o assetClass
     # é o campo informativo real nesses casos.
@@ -530,7 +533,16 @@ class GorilaLaudo:
         if asset_class in ['STOCKS'] or 'STOCK' in security_type.upper() or 'ETF' in security_type.upper():
             return "Curto Prazo (D+2 a D+30)"
 
-        # Renda fixa com vencimento
+        # Fundos — verificado ANTES de renda fixa porque FUNDQUOTE pode ter assetClass FIXED_INCOME
+        if self._is_fund_type(security_type):
+            if 'PE' in security_type.upper() or 'PRIVATE' in security_type.upper():
+                return "Sem liquidez (ilíquido)"
+            if security_type.upper() == 'DI_FUND' or ('DI' in security_type.upper() and 'FUND' in security_type.upper()):
+                return "Disponível (D+0 / D+1)"
+            # Fundo não encontrado no guia: sinaliza para cadastro manual
+            return self.LIQUIDITY_UNKNOWN
+
+        # Renda fixa com vencimento (apenas tipos não-fundo)
         if asset_class in ['FIXED_INCOME'] or 'FIXED' in security_type.upper() or 'DI' in security_type.upper():
             if maturity_date:
                 try:
@@ -540,14 +552,6 @@ class GorilaLaudo:
                 except (ValueError, TypeError):
                     pass
             return "RF — vencimento determinado"
-
-        # Fundos
-        if 'FUND' in security_type.upper() or 'PE' in security_type.upper() or 'FIP' in security_type.upper():
-            if 'PE' in security_type.upper() or 'PRIVATE' in security_type.upper():
-                return "Sem liquidez (ilíquido)"
-            if 'DI' in security_type.upper() or 'FIXED_INCOME' in security_type.upper():
-                return "Disponível (D+0 / D+1)"
-            return "Médio Prazo (D+31 a D+90)"
 
         # FII
         if 'FII' in security_type.upper():
@@ -766,6 +770,7 @@ class GorilaLaudo:
             "Longo Prazo (2 a 5 anos)",
             "RF — vencimento determinado",
             "Sem liquidez (ilíquido)",
+            self.LIQUIDITY_UNKNOWN,
         ]
 
         for cat in categorias:

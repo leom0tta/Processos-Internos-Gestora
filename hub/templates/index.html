@@ -647,6 +647,22 @@
   </main>
 </div><!-- /layout -->
 
+<!-- Modal: liquidez de fundos não encontrados no guia -->
+<div class="modal-overlay" id="modal-liquidez">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      ⏳ Liquidez não identificada — Cadastro manual necessário
+    </div>
+    <div class="modal-body">
+      <p>Os fundos abaixo não foram encontrados no Guia de Fundos XP e não possuem vencimento determinado. Selecione a categoria de liquidez correta para cada um — a escolha será <strong>salva automaticamente</strong> para os próximos laudos.</p>
+      <div id="modal-liquidez-rows"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="confirmarLiquidez()">Confirmar e gerar laudo</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: tipos de ativo não mapeados -->
 <div class="modal-overlay" id="modal-mapping">
   <div class="modal">
@@ -773,19 +789,24 @@
         setStatus('success', `Laudo gerado com sucesso: ${data.arquivo}`);
         document.getElementById('btn-download').style.display = 'inline-flex';
       } else if (data.needs_mapping) {
-        // Tipos desconhecidos — abre o modal
+        // Tipos desconhecidos — abre o modal de classe de ativo
         btn.disabled = false;
         setStatus('loading', `${data.ativos_nao_mapeados.length} ativo(s) não identificado(s). Classifique-os para continuar.`);
         abrirModalMapeamento(data.ativos_nao_mapeados, data.classes_disponiveis, mapeamentos_extras);
+      } else if (data.needs_liquidity_mapping) {
+        // Fundos sem liquidez no guia — abre o modal de liquidez
+        btn.disabled = false;
+        setStatus('loading', `${data.ativos_sem_liquidez.length} fundo(s) sem liquidez identificada. Cadastre manualmente para continuar.`);
+        abrirModalLiquidez(data.ativos_sem_liquidez, data.liquidity_categories);
       } else {
         setStatus('error', 'Erro: ' + data.erro);
       }
     } catch (e) {
       setStatus('error', 'Erro de conexão com o servidor: ' + e.message);
     } finally {
-      if (!document.getElementById('modal-mapping').classList.contains('open')) {
-        btn.disabled = false;
-      }
+      const modalAberto = document.getElementById('modal-mapping').classList.contains('open')
+                       || document.getElementById('modal-liquidez').classList.contains('open');
+      if (!modalAberto) btn.disabled = false;
     }
   }
 
@@ -972,6 +993,57 @@
     const data = await res.json();
     if (data.ok) carregarTypeMappings();
     else alert('Erro: ' + (data.erro || ''));
+  }
+
+  // ── Modal de liquidez manual ─────────────────────
+  function abrirModalLiquidez(ativos, categorias) {
+    const rows = document.getElementById('modal-liquidez-rows');
+    rows.innerHTML = '';
+
+    ativos.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'mapping-row';
+
+      const opts = categorias.map(c =>
+        `<option value="${c}">${c}</option>`
+      ).join('');
+
+      div.innerHTML = `
+        <div class="type-label">${a.security_name}</div>
+        <div class="type-name">Type: ${a.security_type}</div>
+        <select class="liq-select" data-name="${a.security_name.replace(/"/g, '&quot;')}"
+          style="width:100%;padding:8px 12px;border:1.5px solid #d1dbe6;border-radius:6px;font-size:13.5px;font-family:Arial,sans-serif;">
+          <option value="">Selecione a categoria de liquidez...</option>
+          ${opts}
+        </select>`;
+      rows.appendChild(div);
+    });
+
+    document.getElementById('modal-liquidez').classList.add('open');
+  }
+
+  async function confirmarLiquidez() {
+    const selects = document.querySelectorAll('.liq-select');
+    let valido = true;
+    const mapeamentos = [];
+
+    selects.forEach(sel => {
+      if (!sel.value) { valido = false; sel.style.borderColor = '#c0392b'; }
+      else { sel.style.borderColor = '#d1dbe6'; mapeamentos.push({ asset_name: sel.dataset.name, liquidity_category: sel.value }); }
+    });
+
+    if (!valido) { alert('Selecione a liquidez de todos os fundos antes de continuar.'); return; }
+
+    // Salva cada mapeamento no BD
+    for (const m of mapeamentos) {
+      await fetch('/api/liquidity-mappings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(m)
+      });
+    }
+
+    document.getElementById('modal-liquidez').classList.remove('open');
+    await gerarLaudo();
   }
 
   function carregarLiquidityMappings() {

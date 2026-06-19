@@ -481,6 +481,39 @@ def api_gerar_laudo():
         if not posicoes_proc:
             return jsonify({"ok": False, "erro": "Nenhuma posição pôde ser processada."}), 400
 
+        # Verificar fundos sem liquidez determinada (não encontrados no guia)
+        from gerar_laudo import GorilaLaudo as _GL
+        ativos_sem_liquidez = []
+        _vistos_liq = set()
+        for pos in posicoes_proc:
+            sec  = pos.get('security', {})
+            nome = sec.get('name', 'N/A')
+            if nome in _vistos_liq:
+                continue
+            if system.classificar_liquidez(sec) == _GL.LIQUIDITY_UNKNOWN:
+                ativos_sem_liquidez.append({
+                    'security_name': nome,
+                    'security_type': sec.get('type', ''),
+                })
+                _vistos_liq.add(nome)
+
+        if ativos_sem_liquidez:
+            return jsonify({
+                "ok":                      False,
+                "needs_liquidity_mapping": True,
+                "ativos_sem_liquidez":     ativos_sem_liquidez,
+                "liquidity_categories": [
+                    "Disponível (D+0 / D+1)",
+                    "Curto Prazo (D+2 a D+30)",
+                    "Médio Prazo (D+31 a D+90)",
+                    "Longo Prazo (91 dias a 1 ano)",
+                    "Longo Prazo (1 a 2 anos)",
+                    "Longo Prazo (2 a 5 anos)",
+                    "RF — vencimento determinado",
+                    "Sem liquidez (ilíquido)",
+                ],
+            })
+
         patrimonio_total, alocacoes = system.calcular_alocacoes(posicoes_proc)
         analise_suit = system.analisar_suitability(alocacoes, perfil)
 
