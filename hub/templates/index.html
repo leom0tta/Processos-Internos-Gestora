@@ -280,6 +280,11 @@
       <span class="icon">🏷️</span> Fluxo de Categorização
     </a>
 
+    <div class="section-label" style="margin-top:12px">Operações</div>
+    <a class="nav-item" data-page="atualizacao" onclick="showPage('atualizacao', this)">
+      <span class="icon">📥</span> Atualização de Posição
+    </a>
+
     <div class="section-label" style="margin-top:12px">Em breve</div>
     <a class="nav-item" data-page="relatorios" onclick="showPage('relatorios', this)">
       <span class="icon">📊</span> Relatórios
@@ -605,6 +610,112 @@
       </div>
 
     </div><!-- /page-categorizacao -->
+
+
+    <!-- ── PÁGINA: Atualização de Posição ───────── -->
+    <div id="page-atualizacao" class="page">
+      <div class="page-header">
+        <h1>Atualização de Posição de Clientes</h1>
+        <p>Importe extratos de custódia para visualizar e processar posições.</p>
+      </div>
+
+      <!-- Sub-abas de custodiante -->
+      <div style="display:flex; gap:0; margin-bottom:24px; border-bottom:2px solid #d1dbe6;">
+        <button id="atualizacao-tab-btn-itau" onclick="switchAtualizacaoTab('itau')"
+          style="padding:10px 22px; border:none; background:none; cursor:pointer; font-size:13.5px; font-weight:700; color:#1B3A5C; border-bottom:3px solid #1B3A5C; margin-bottom:-2px; font-family:Arial,sans-serif;">
+          Itaú
+        </button>
+      </div>
+
+      <!-- ── ABA: Itaú ── -->
+      <div id="atualizacao-tab-itau">
+
+        <!-- Upload -->
+        <div class="card">
+          <h2>Extrato Ion/Itaú — Posição de Investimentos</h2>
+          <p style="font-size:13.5px; color:#4a5568; margin-bottom:22px; line-height:1.6;">
+            Faça o upload do PDF <strong>"Posição de Investimentos"</strong> gerado pelo Ion (plataforma Itaú para assessores).
+            O sistema extrai automaticamente todas as posições do extrato.
+          </p>
+
+          <!-- Drop zone -->
+          <div id="itau-dropzone"
+            onclick="document.getElementById('itau-file-input').click()"
+            ondragover="event.preventDefault(); this.style.borderColor='#1B3A5C'; this.style.background='#eef4fb';"
+            ondragleave="this.style.borderColor='#c5d8ec'; this.style.background='#f8fafc';"
+            ondrop="handleItatuDrop(event)"
+            style="border:2px dashed #c5d8ec; border-radius:8px; background:#f8fafc; padding:36px 24px;
+                   text-align:center; cursor:pointer; transition:all .15s; margin-bottom:18px;">
+            <div style="font-size:36px; margin-bottom:10px; opacity:.5;">📄</div>
+            <div style="font-size:14px; font-weight:700; color:#1B3A5C; margin-bottom:4px;">Clique ou arraste o PDF aqui</div>
+            <div style="font-size:12.5px; color:#8fa3b8;" id="itau-filename">Nenhum arquivo selecionado</div>
+          </div>
+          <input type="file" id="itau-file-input" accept=".pdf" style="display:none" onchange="onItauFileSelect(event)" />
+
+          <div style="display:flex; align-items:center; gap:14px;">
+            <button class="btn btn-primary" id="btn-processar-itau" onclick="uploadExtratoItau()" disabled>
+              <span>⚙️</span> Processar Extrato
+            </button>
+            <span id="itau-status-inline" style="font-size:13.5px; display:none;"></span>
+          </div>
+        </div>
+
+        <!-- Status bar -->
+        <div class="status-bar" id="itau-status-bar">
+          <div class="spinner" id="itau-spinner"></div>
+          <span id="itau-status-text"></span>
+        </div>
+
+        <!-- Resultado -->
+        <div id="itau-resultado" style="display:none;">
+
+          <!-- Resumo por classe -->
+          <div class="card">
+            <h2>Resumo da Posição
+              <span id="itau-data-posicao" style="font-weight:400; font-size:12px; color:#8fa3b8; text-transform:none; letter-spacing:0; margin-left:8px;"></span>
+            </h2>
+            <div style="display:flex; gap:14px; flex-wrap:wrap;" id="itau-resumo-cards"></div>
+          </div>
+
+          <!-- Tabela de posições -->
+          <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+              <h2 style="margin:0;">Posições individuais
+                <span id="itau-total-count" style="font-weight:400; font-size:12px; color:#8fa3b8; text-transform:none; letter-spacing:0;"></span>
+              </h2>
+              <div style="display:flex; gap:8px;">
+                <input type="text" id="itau-filtro" placeholder="Filtrar por nome..." oninput="filtrarTabelaItau()"
+                  style="padding:7px 12px; border:1.5px solid #d1dbe6; border-radius:6px; font-size:13px; font-family:Arial,sans-serif; width:220px;" />
+                <select id="itau-filtro-tipo" onchange="filtrarTabelaItau()"
+                  style="padding:7px 12px; border:1.5px solid #d1dbe6; border-radius:6px; font-size:13px; font-family:Arial,sans-serif; appearance:none; padding-right:28px;
+                  background: url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%228%22 viewBox=%220 0 12 8%22%3E%3Cpath d=%22M1 1l5 5 5-5%22 stroke=%22%234a5568%22 stroke-width=%221.5%22 fill=%22none%22 stroke-linecap=%22round%22/%3E%3C/svg%3E') no-repeat right 8px center #fff;">
+                  <option value="">Todos os tipos</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+              <table id="itau-tabela" style="width:100%; border-collapse:collapse; font-size:13px; min-width:820px;">
+                <thead>
+                  <tr style="background:#1B3A5C; color:#fff; text-align:left;">
+                    <th style="padding:10px 14px; font-weight:700;">Nome</th>
+                    <th style="padding:10px 14px; font-weight:700;">Tipo</th>
+                    <th style="padding:10px 14px; font-weight:700;">Taxa</th>
+                    <th style="padding:10px 14px; font-weight:700;">Início</th>
+                    <th style="padding:10px 14px; font-weight:700;">Vencimento</th>
+                    <th style="padding:10px 14px; font-weight:700; text-align:right;">Saldo (R$)</th>
+                    <th style="padding:10px 14px; font-weight:700; text-align:right;">Alocação</th>
+                  </tr>
+                </thead>
+                <tbody id="itau-tabela-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /itau-resultado -->
+      </div><!-- /atualizacao-tab-itau -->
+
+    </div><!-- /page-atualizacao -->
 
 
     <!-- ── PÁGINAS: Em breve ─────────────────────── -->
@@ -1085,6 +1196,169 @@
     el.style.color   = tipo === 'success' ? '#1a7a4a' : '#c0392b';
     el.textContent   = msg;
     setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
+  // ── Atualização de Posição ───────────────────────
+
+  let _itauFile = null;
+  let _itauPosicoes = [];
+
+  function switchAtualizacaoTab(tab) {
+    // Só Itaú por ora; extensível para outros bancos
+    document.getElementById('atualizacao-tab-' + tab).style.display = 'block';
+    const btn = document.getElementById('atualizacao-tab-btn-' + tab);
+    btn.style.color        = '#1B3A5C';
+    btn.style.borderBottom = '3px solid #1B3A5C';
+  }
+
+  function handleItatuDrop(event) {
+    event.preventDefault();
+    const dz = document.getElementById('itau-dropzone');
+    dz.style.borderColor = '#c5d8ec';
+    dz.style.background  = '#f8fafc';
+    const file = event.dataTransfer.files[0];
+    if (file) setItauFile(file);
+  }
+
+  function onItauFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) setItauFile(file);
+  }
+
+  function setItauFile(file) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      mostrarStatus('itau-status-inline', 'error', 'Apenas arquivos PDF são aceitos.');
+      return;
+    }
+    _itauFile = file;
+    document.getElementById('itau-filename').textContent = file.name;
+    document.getElementById('btn-processar-itau').disabled = false;
+    document.getElementById('itau-resultado').style.display = 'none';
+    setItauStatus('', '');
+  }
+
+  function setItauStatus(tipo, msg) {
+    const bar     = document.getElementById('itau-status-bar');
+    const spinner = document.getElementById('itau-spinner');
+    const text    = document.getElementById('itau-status-text');
+    if (!tipo) { bar.className = 'status-bar'; return; }
+    bar.className = 'status-bar ' + tipo;
+    spinner.style.display = tipo === 'loading' ? 'block' : 'none';
+    text.textContent = msg;
+  }
+
+  async function uploadExtratoItau() {
+    if (!_itauFile) return;
+
+    const btn = document.getElementById('btn-processar-itau');
+    btn.disabled = true;
+    setItauStatus('loading', 'Lendo e processando o PDF...');
+    document.getElementById('itau-resultado').style.display = 'none';
+
+    try {
+      const fd = new FormData();
+      fd.append('file', _itauFile);
+
+      const res  = await fetch('/api/parse-extrato/ion-itau', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (!data.ok) {
+        setItauStatus('error', 'Erro: ' + (data.erro || 'Falha ao processar o PDF.'));
+        return;
+      }
+
+      _itauPosicoes = data.posicoes;
+      renderizarResultadoItau(data);
+      setItauStatus('success', `${data.posicoes.length} posições extraídas — posição de ${data.meta.data_posicao || '?'}.`);
+
+    } catch (e) {
+      setItauStatus('error', 'Erro de conexão: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function renderizarResultadoItau(data) {
+    // ── Cabeçalho ────────────────────────────────
+    const dataPosicao = data.meta.data_posicao ? ` — posição de ${data.meta.data_posicao}` : '';
+    document.getElementById('itau-data-posicao').textContent = dataPosicao;
+    document.getElementById('itau-total-count').textContent  = `(${data.posicoes.length} itens)`;
+
+    // ── Resumo por classe ─────────────────────────
+    const resumoEl = document.getElementById('itau-resumo-cards');
+    resumoEl.innerHTML = '';
+    const corClasse = { 'CDB/RF': '#1B3A5C', 'Fundo': '#1a7a4a', 'Previdência': '#7b4b9e', 'Poupança': '#8fa3b8' };
+    const total = data.totais.saldo_total;
+
+    // Card total primeiro
+    resumoEl.appendChild(_criarResumoCard('Total Geral', total, total, '#2c3e50'));
+    for (const [cls, val] of Object.entries(data.totais.por_classe)) {
+      resumoEl.appendChild(_criarResumoCard(cls, val, total, corClasse[cls] || '#4a5568'));
+    }
+
+    // ── Popula filtro de tipo ─────────────────────
+    const tipos = [...new Set(data.posicoes.map(p => p.tipo))].sort();
+    const sel   = document.getElementById('itau-filtro-tipo');
+    sel.innerHTML = '<option value="">Todos os tipos</option>';
+    tipos.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      sel.appendChild(o);
+    });
+
+    // ── Renderiza tabela ──────────────────────────
+    renderizarLinhasItau(data.posicoes);
+
+    document.getElementById('itau-resultado').style.display = 'block';
+  }
+
+  function _criarResumoCard(label, valor, total, cor) {
+    const pct   = total > 0 ? (valor / total * 100).toFixed(1) : '0.0';
+    const fmtR$ = v => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const div   = document.createElement('div');
+    div.style.cssText = `background:#fff; border:1.5px solid #e8eef4; border-top:3px solid ${cor};
+      border-radius:8px; padding:14px 18px; min-width:180px; flex:1;`;
+    div.innerHTML = `
+      <div style="font-size:11px; font-weight:700; color:#8fa3b8; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;">${label}</div>
+      <div style="font-size:18px; font-weight:700; color:${cor};">${fmtR$(valor)}</div>
+      <div style="font-size:11.5px; color:#aab8c8; margin-top:2px;">${pct}% da carteira</div>`;
+    return div;
+  }
+
+  function renderizarLinhasItau(posicoes) {
+    const tbody  = document.getElementById('itau-tabela-body');
+    tbody.innerHTML = '';
+    const fmtR$ = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtPct = v => v != null ? (v * 100).toFixed(2) + '%' : '—';
+
+    posicoes.forEach((p, i) => {
+      const tr = document.createElement('tr');
+      tr.style.background   = i % 2 === 1 ? '#f4f8fc' : '#fff';
+      tr.dataset.nome = p.nome.toLowerCase();
+      tr.dataset.tipo = p.tipo;
+
+      const taxa = p.taxa_cdi ? `${p.taxa_cdi}% CDI` : '—';
+      tr.innerHTML = `
+        <td style="padding:8px 14px; border-bottom:1px solid #e8eef4; font-weight:600; max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${p.nome}">${p.nome}</td>
+        <td style="padding:8px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">${p.tipo}</td>
+        <td style="padding:8px 14px; border-bottom:1px solid #e8eef4; color:#4a5568;">${taxa}</td>
+        <td style="padding:8px 14px; border-bottom:1px solid #e8eef4; color:#6b7c93;">${p.data_inicio}</td>
+        <td style="padding:8px 14px; border-bottom:1px solid #e8eef4; color:#6b7c93;">${p.data_vencimento}</td>
+        <td style="padding:8px 14px; border-bottom:1px solid #e8eef4; text-align:right; font-weight:600;">${fmtR$(p.saldo_atual)}</td>
+        <td style="padding:8px 14px; border-bottom:1px solid #e8eef4; text-align:right; color:#4a5568;">${fmtPct(p.alocacao)}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function filtrarTabelaItau() {
+    const texto = document.getElementById('itau-filtro').value.toLowerCase();
+    const tipo  = document.getElementById('itau-filtro-tipo').value;
+    const linhas = document.querySelectorAll('#itau-tabela-body tr');
+    linhas.forEach(tr => {
+      const nomeOk = !texto || tr.dataset.nome.includes(texto);
+      const tipoOk = !tipo  || tr.dataset.tipo === tipo;
+      tr.style.display = nomeOk && tipoOk ? '' : 'none';
+    });
   }
 
   // ── Init ─────────────────────────────────────────
