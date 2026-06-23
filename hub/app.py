@@ -509,7 +509,7 @@ def api_gerar_laudo():
                     "Longo Prazo (91 dias a 1 ano)",
                     "Longo Prazo (1 a 2 anos)",
                     "Longo Prazo (2 a 5 anos)",
-                    "RF — vencimento determinado",
+                    "Longo Prazo (Superior a 5 anos)",
                     "Sem liquidez (ilíquido)",
                 ],
             })
@@ -544,6 +544,47 @@ def api_download(filename):
     if not filepath.exists():
         return jsonify({"ok": False, "erro": "Arquivo não encontrado."}), 404
     return send_file(str(filepath), as_attachment=True, download_name=filename)
+
+
+# ============================================================
+# PARSERS DE EXTRATO
+# ============================================================
+
+@app.route("/api/parse-extrato/ion-itau", methods=["POST"])
+@login_required
+def api_parse_extrato_ion_itau():
+    """
+    Recebe upload de PDF Ion/Itaú e retorna as posições parseadas como JSON.
+
+    Request: multipart/form-data com campo "file" (PDF)
+    Response: {
+        ok: true,
+        meta: { data_posicao, conta },
+        posicoes: [ { nome, tipo, classe, emissor, indexador, taxa_cdi,
+                      data_inicio, data_vencimento, saldo_atual, alocacao }, ... ],
+        totais: { saldo_total, por_classe }
+    }
+    """
+    if 'file' not in request.files:
+        return jsonify({"ok": False, "erro": "Nenhum arquivo enviado (campo 'file')."}), 400
+
+    f = request.files['file']
+    if not f.filename or not f.filename.lower().endswith('.pdf'):
+        return jsonify({"ok": False, "erro": "Arquivo deve ser um PDF."}), 400
+
+    try:
+        from parsers.ion_itau import parse_posicao
+        resultado = parse_posicao(f.stream)
+        return jsonify({
+            "ok":       True,
+            "meta":     resultado["meta"],
+            "posicoes": resultado["posicoes"],
+            "totais":   resultado["totais"],
+        })
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("Erro ao parsear extrato Ion/Itaú")
+        return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 # ============================================================

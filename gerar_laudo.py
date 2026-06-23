@@ -486,7 +486,7 @@ class GorilaLaudo:
         elif dias <= 1825:
             return "Longo Prazo (2 a 5 anos)"
         else:
-            return "RF — vencimento determinado"
+            return "Longo Prazo (Superior a 5 anos)"
 
     def classificar_liquidez(self, security: dict) -> str:
         """
@@ -551,7 +551,8 @@ class GorilaLaudo:
                     return self._faixa_prazo(dias)
                 except (ValueError, TypeError):
                     pass
-            return "RF — vencimento determinado"
+            # RF sem data de vencimento: sinaliza para cadastro manual
+            return self.LIQUIDITY_UNKNOWN
 
         # FII
         if 'FII' in security_type.upper():
@@ -768,7 +769,7 @@ class GorilaLaudo:
             "Longo Prazo (91 dias a 1 ano)",
             "Longo Prazo (1 a 2 anos)",
             "Longo Prazo (2 a 5 anos)",
-            "RF — vencimento determinado",
+            "Longo Prazo (Superior a 5 anos)",
             "Sem liquidez (ilíquido)",
             self.LIQUIDITY_UNKNOWN,
         ]
