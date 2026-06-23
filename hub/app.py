@@ -588,6 +588,101 @@ def api_parse_extrato_ion_itau():
 
 
 # ============================================================
+# GORILA — UPLOAD DE POSIÇÃO
+# ============================================================
+
+@app.route("/api/gorila/upload-posicao-itau", methods=["POST"])
+@login_required
+def api_gorila_upload_posicao_itau():
+    """
+    Envia posições parseadas do extrato Ion/Itaú para o Gorila.
+
+    Request JSON:
+    {
+      "cliente_id":   123,
+      "posicoes":     [ <dicts do parser ion_itau> ],
+      "cnpjs_fundos": {
+        "NOME DO FUNDO": { "cnpj": "12345678000190", "asset_class": "FIXED_INCOME" },
+        ...
+      }
+    }
+
+    Response:
+    {
+      "ok":        true/false,
+      "total":     N,
+      "sucesso":   N,
+      "erros":     [ { "nome": "...", "erro": "..." } ],
+      "resultados":[ { "nome", "classe", "security_id", "transaction_id", "ok" } ]
+    }
+    """
+    if not USE_DB:
+        return jsonify({"ok": False, "erro": "Banco de dados não configurado."}), 503
+
+    data         = request.get_json(force=True)
+    cliente_id   = data.get('cliente_id')
+    posicoes     = data.get('posicoes', [])
+    cnpjs_fundos = data.get('cnpjs_fundos', {})
+
+    if not cliente_id or not posicoes:
+        return jsonify({"ok": False, "erro": "cliente_id e posicoes são obrigatórios."}), 400
+
+    cliente = Cliente.query.get(cliente_id)
+    if not cliente:
+        return jsonify({"ok": False, "erro": "Cliente não encontrado."}), 404
+
+    portfolio_id = cliente.portfolio_id
+    if not portfolio_id:
+        return jsonify({
+            "ok": False,
+            "erro": f"Cliente '{cliente.nome}' não tem Portfolio ID Gorila configurado. "
+                    "Configure em Cadastro de Clientes antes de prosseguir."
+        }), 400
+
+    try:
+        from gorila_client import GorilaClient, GorilaError
+        gorila = GorilaClient()
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+    resultados = []
+    erros      = []
+
+    for pos in posicoes:
+        nome = pos.get('nome', '?')
+        try:
+            if pos.get('classe') == 'CDB/RF':
+                sec_id = gorila.criar_cdb(pos)
+            else:
+                info      = cnpjs_fundos.get(nome, {})
+                cnpj      = info.get('cnpj', '')
+                asset_cls = info.get('asset_class', 'MULTIMARKET')
+                sec_id    = gorila.buscar_ou_criar_fundo(pos, cnpj=cnpj, asset_class=asset_cls)
+
+            tx = gorila.criar_transacao(portfolio_id, sec_id, pos)
+            resultados.append({
+                'nome':           nome,
+                'classe':         pos.get('classe'),
+                'security_id':    sec_id,
+                'transaction_id': tx.get('id'),
+                'ok':             True,
+            })
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception(f"Erro ao enviar '{nome}' para Gorila")
+            erros.append({'nome': nome, 'erro': str(e)})
+
+    return jsonify({
+        'ok':         len(erros) == 0,
+        'total':      len(posicoes),
+        'sucesso':    len(resultados),
+        'erros':      erros,
+        'resultados': resultados,
+    })
+
+
+# ============================================================
 # MAIN
 # ============================================================
 

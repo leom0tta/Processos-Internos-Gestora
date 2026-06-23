@@ -19,17 +19,20 @@ Uso básico
 
 Campos de cada posição
 ----------------------
-    nome            str    — nome do ativo conforme extrato
-    tipo            str    — CDB PLUS | CDB-DI | Fundo RF | Fundo DI |
-                             Fundo Internacional | Fundo | Previdência VGBL | Poupança
-    classe          str    — CDB/RF | Fundo | Previdência | Poupança
-    emissor         str    — sempre "Itaú Unibanco" neste extrato
-    indexador       str|None — "CDI" para CDBs, None para fundos
-    taxa_cdi        int|None — percentual do CDI (ex: 100, 110, 90) para CDBs
-    data_inicio     str    — "DD/MM/YYYY"
-    data_vencimento str    — "DD/MM/YYYY" ou "-" quando sem vencimento
-    saldo_atual     float  — valor bruto em R$ na data da posição
-    alocacao        float|None — percentual da carteira (0.0 – 1.0)
+    nome              str    — nome do ativo conforme extrato
+    tipo              str    — CDB PLUS | CDB-DI | Fundo RF | Fundo DI |
+                               Fundo Internacional | Fundo | Previdência VGBL | Poupança
+    classe            str    — CDB/RF | Fundo | Previdência | Poupança
+    emissor           str    — sempre "Itaú Unibanco" neste extrato
+    indexador         str|None — "CDI" para CDBs, None para fundos
+    taxa_cdi          int|None — percentual do CDI (ex: 100, 110, 90) para CDBs
+    data_inicio       str    — "DD/MM/YYYY"
+    data_vencimento   str    — "DD/MM/YYYY" ou "-" quando sem vencimento
+    saldo_atual       float  — valor bruto em R$ na data da posição
+    alocacao          float|None — percentual da carteira (0.0 – 1.0)
+    rent_desde_inicio float|None — rentabilidade bruta acumulada desde o início (ex: 0.398 = 39,8%)
+    valor_original    float|None — valor aplicado reconstruído: saldo_atual / (1 + rent_desde_inicio)
+                                   None quando rent_desde_inicio não disponível
 """
 
 import re
@@ -47,6 +50,13 @@ except ImportError:
 # Cabeçalho do extrato (data da posição)
 _META_DATE_PAT = re.compile(r'Data da posi[çc][ãa]o:\s*(\d{2}/\d{2}/\d{4})')
 _META_ACCT_PAT = re.compile(r'Ag\s+\S+\s*/\s*CC\s+\S+')
+
+# Linha de rentabilidade simulada (6 valores: Mês-1, Mês-2, Ano-ant, Ano-atual, 12m, Desde o início)
+# Cada valor é "XX,XX%" ou "-"; subtotais de seção têm "X.XXX,XX%" → não casam aqui (desejado)
+_RENT_VAL = r'(-?\d+,\d+%|-)'
+_RENT_PAT = re.compile(
+    rf'^{_RENT_VAL}\s+{_RENT_VAL}\s+{_RENT_VAL}\s+{_RENT_VAL}\s+{_RENT_VAL}\s+{_RENT_VAL}$'
+)
 
 # Linha de CDB:
 #   "CDB PLUS ITAU CDI 100,00 08 2028  360.688,55  15,80%  30/08/2023  03/08/2028"
@@ -101,6 +111,29 @@ def _parse_aloc(s: str) -> "float | None":
     return round(float(s.replace(',', '.').replace('%', '')) / 100, 6)
 
 
+def _parse_rent(s: str) -> "float | None":
+    """Converte "39,80%" → 0.398; "-" → None"""
+    if not s or s == '-':
+        return None
+    return round(float(s.replace('%', '').replace(',', '.')) / 100, 6)
+
+
+def _calc_valor_original(saldo: float, rent: "float | None") -> "float | None":
+    """
+    Reconstrói o valor aplicado original a partir do saldo atual e da
+    rentabilidade bruta acumulada desde o início (conforme extrato Ion).
+
+    Fórmula: valor_original = saldo_atual / (1 + rent_desde_inicio)
+
+    Válido para CDBs CDI (rentabilidade bruta = ganho real do ativo).
+    Para fundos e previdência, a rentabilidade "simulada" já desconta IR de
+    ativos isentos, então a reconstrução é aproximada — use com cautela.
+    """
+    if rent is None or rent <= -1:
+        return None
+    return round(saldo / (1 + rent), 2)
+
+
 def _parse_taxa_cdi(nome: str) -> "int | None":
     """Extrai percentual CDI do nome: "CDI 110,00" → 110"""
     m = re.search(r'CDI\s+(\d+),', nome)
@@ -137,13 +170,14 @@ def parse_posicao(source: Union[str, IO[bytes]]) -> dict:
     dict com chaves:
         meta      : dict  — data_posicao, conta
         posicoes  : list  — lista de posições (ver docstring do módulo)
-        totais    : dict  — saldo_total, por_classe {classe: saldo}
+        totais    : dict  — saldo_total, original_total, por_classe {classe: saldo}
         erros     : list  — linhas que não puderam ser parseadas
     """
     posicoes = []
     erros = []
     meta = {'data_posicao': None, 'conta': None}
     current_section = 'Desconhecido'
+    _last_rent_str = None  # último "Rent. Desde o início" visto
 
     with pdfplumber.open(source) as pdf:
         for page in pdf.pages:
@@ -171,6 +205,14 @@ def parse_posicao(source: Union[str, IO[bytes]]) -> dict:
                         current_section = sec
                         break
 
+                # ── Linha de rentabilidade simulada (6 valores) ────────────
+                # Verificada ANTES do filtro de data (rentability lines têm apenas %).
+                # O último grupo é sempre "Rent. Desde o início".
+                rent_m = _RENT_PAT.match(line)
+                if rent_m:
+                    _last_rent_str = rent_m.group(6)
+                    continue
+
                 # ── Requer pelo menos uma data real para ser posição ───────
                 if not re.search(r'\d{2}/\d{2}/\d{4}', line):
                     continue
@@ -184,17 +226,22 @@ def parse_posicao(source: Union[str, IO[bytes]]) -> dict:
                 if m:
                     nome, saldo_s, aloc_s, dt_ini, dt_venc = m.groups()
                     nome = nome.strip()
+                    saldo = _parse_saldo(saldo_s)
+                    rent = _parse_rent(_last_rent_str or '-')
+                    _last_rent_str = None
                     posicoes.append({
-                        'nome':            nome,
-                        'tipo':            _classify_tipo(nome, current_section),
-                        'classe':          current_section,
-                        'emissor':         'Itaú Unibanco',
-                        'indexador':       'CDI',
-                        'taxa_cdi':        _parse_taxa_cdi(nome),
-                        'data_inicio':     dt_ini,
-                        'data_vencimento': dt_venc,
-                        'saldo_atual':     _parse_saldo(saldo_s),
-                        'alocacao':        _parse_aloc(aloc_s),
+                        'nome':              nome,
+                        'tipo':              _classify_tipo(nome, current_section),
+                        'classe':            current_section,
+                        'emissor':           'Itaú Unibanco',
+                        'indexador':         'CDI',
+                        'taxa_cdi':          _parse_taxa_cdi(nome),
+                        'data_inicio':       dt_ini,
+                        'data_vencimento':   dt_venc,
+                        'saldo_atual':       saldo,
+                        'alocacao':          _parse_aloc(aloc_s),
+                        'rent_desde_inicio': rent,
+                        'valor_original':    _calc_valor_original(saldo, rent),
                     })
                     continue
 
@@ -206,19 +253,25 @@ def parse_posicao(source: Union[str, IO[bytes]]) -> dict:
 
                     # Pular linhas de subtotal de seção
                     if any(nome.startswith(p) for p in _SUBTOTAL_PREFIXES):
+                        _last_rent_str = None
                         continue
 
+                    saldo = _parse_saldo(saldo_s)
+                    rent = _parse_rent(_last_rent_str or '-')
+                    _last_rent_str = None
                     posicoes.append({
-                        'nome':            nome,
-                        'tipo':            _classify_tipo(nome, current_section),
-                        'classe':          current_section,
-                        'emissor':         'Itaú Unibanco',
-                        'indexador':       None,
-                        'taxa_cdi':        None,
-                        'data_inicio':     dt_ini,
-                        'data_vencimento': dt_venc,
-                        'saldo_atual':     _parse_saldo(saldo_s),
-                        'alocacao':        _parse_aloc(aloc_s),
+                        'nome':              nome,
+                        'tipo':              _classify_tipo(nome, current_section),
+                        'classe':            current_section,
+                        'emissor':           'Itaú Unibanco',
+                        'indexador':         None,
+                        'taxa_cdi':          None,
+                        'data_inicio':       dt_ini,
+                        'data_vencimento':   dt_venc,
+                        'saldo_atual':       saldo,
+                        'alocacao':          _parse_aloc(aloc_s),
+                        'rent_desde_inicio': rent,
+                        'valor_original':    _calc_valor_original(saldo, rent),
                     })
                     continue
 
@@ -229,6 +282,7 @@ def parse_posicao(source: Union[str, IO[bytes]]) -> dict:
 
     # ── Totais ─────────────────────────────────────────────────────────────
     saldo_total = sum(p['saldo_atual'] for p in posicoes)
+    original_total = sum(p['valor_original'] for p in posicoes if p['valor_original'] is not None)
     por_classe: dict[str, float] = {}
     for p in posicoes:
         por_classe[p['classe']] = por_classe.get(p['classe'], 0.0) + p['saldo_atual']
@@ -237,8 +291,9 @@ def parse_posicao(source: Union[str, IO[bytes]]) -> dict:
         'meta':     meta,
         'posicoes': posicoes,
         'totais': {
-            'saldo_total': round(saldo_total, 2),
-            'por_classe':  {k: round(v, 2) for k, v in por_classe.items()},
+            'saldo_total':    round(saldo_total, 2),
+            'original_total': round(original_total, 2),
+            'por_classe':     {k: round(v, 2) for k, v in por_classe.items()},
         },
         'erros': erros,
     }
