@@ -7,55 +7,93 @@ import os
 
 # pip install openpyxl requests
 
-API_KEY = os.getenv("GORILA_API_KEY")
-BASE_URL = "https://core.gorila.com.br"
+API_KEY = os.getenv('GORILA_API_KEY')
+BASE_URL = os.getenv('GORILA_API_BASE_URL')
 
-# ── Feriados nacionais de maio 2026 ───────────────────────────
+start = "2026-06-01"
+end = "2026-06-30"
+
+# ── Feriados do período ───────────────────────────────────────
 feriados = [
-    "2026-05-01",  # Dia do Trabalho
-    # adicione outros feriados que caírem no período
-]
-# ─────────────────────────────────────────────────────────────
-
-# ── Insira os clientes aqui ───────────────────────────────────
-clientes = [
-    {"name": "PABLO NAVARRO DIAS LANGENBACH", "portfolioId": "582f637d-0bbf-4045-9840-4a352294f1b0"},
-    {"name": "WILLIAM GOMES BORGES LESSA",    "portfolioId": "9d5cdd99-d904-4aa8-985e-c700bad0896c"},
-    {"name": "RAPHAEL SANTOS DE ALMEIDA REZENDE DE MATTOS",    "portfolioId": "6f3fcf6b-06c3-4f5b-8d2f-c02e905fcd71"},
+    "2026-06-04",  # Corpus Christi
 ]
 # ─────────────────────────────────────────────────────────────
 
 headers_api = {"authorization": API_KEY}
 
+def listar_todos_portfolios():
+    """Busca todos os portfólios da conta com paginação automática."""
+    portfolios = []
+    page_token = None
+
+    while True:
+        params = {"limit": 1000}
+        if page_token:
+            params["pageToken"] = page_token
+
+        resp = requests.get(f"{BASE_URL}/portfolios", headers=headers_api, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        portfolios.extend(data.get("records", []))
+        print(f"  Portfolios carregados: {len(portfolios)}")
+
+        # next é None ou string vazia quando não há mais páginas
+        next_url = data.get("next")
+        if not next_url:
+            break
+
+        # Extrai o pageToken da URL de próxima página
+        from urllib.parse import urlparse, parse_qs
+        token = parse_qs(urlparse(next_url).query).get("token", [None])[0]
+        if not token:
+            break
+        page_token = token
+
+    return portfolios
+
 def is_dia_util(date_str):
-    """Retorna True se a data for dia útil (seg–sex, fora dos feriados listados)."""
     d = datetime.strptime(date_str, "%Y-%m-%d").date()
     return d.weekday() < 5 and date_str not in feriados
 
-def get_nav_diario(portfolio_id, start="2026-05-01", end="2026-05-31"):
+def get_nav_diario(portfolio_id, start=start, end=end):
     url = f"{BASE_URL}/portfolios/{portfolio_id}/nav"
     params = {"frequency": "DAILY", "startDate": start, "endDate": end}
     resp = requests.get(url, headers=headers_api, params=params, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
-# ── Coleta dados ──────────────────────────────────────────────
+# ── Busca portfolios automaticamente ─────────────────────────
+print("Listando portfólios da conta Gorila...")
+portfolios = listar_todos_portfolios()
+print(f"Total encontrado: {len(portfolios)} portfólios\n")
+
+# ── Coleta NAV de cada portfolio ──────────────────────────────
 linhas = []
-for cliente in clientes:
-    print(f"Buscando: {cliente['name']}...")
+for p in portfolios:
+    nome = p.get("name", p["id"])
+    pid  = p["id"]
+    status = p.get("status", "")
+
+    # Ignora portfolios com erro de processamento
+    if status == "INVALID":
+        print(f"  ⚠️  Ignorando {nome} (status: INVALID)")
+        continue
+
+    print(f"Buscando: {nome}...")
     try:
-        data = get_nav_diario(cliente["portfolioId"])
+        data = get_nav_diario(pid)
         serie = data.get("timeseries", [])
 
         uteis = [
-            p for p in serie
-            if p["nav"] is not None and is_dia_util(p["referenceDate"])
+            pt for pt in serie
+            if pt["nav"] is not None and is_dia_util(pt["referenceDate"])
         ]
-        navs = [p["nav"] for p in uteis]
+        navs = [pt["nav"] for pt in uteis]
 
         linhas.append({
-            "Cliente":               cliente["name"],
-            "ID":                    cliente["portfolioId"],
+            "Cliente":               nome,
+            "ID":                    pid,
             "Dias úteis com dados":  len(navs),
             "Mínimo (R$)":           min(navs) if navs else None,
             "Máximo (R$)":           max(navs) if navs else None,
@@ -64,9 +102,9 @@ for cliente in clientes:
             "Patrimônio final (R$)": uteis[-1]["nav"] if uteis else None,
         })
     except Exception as e:
-        print(f"  ⚠️  Erro em {cliente['name']}: {e}")
+        print(f"  ⚠️  Erro em {nome}: {e}")
         linhas.append({
-            "Cliente": cliente["name"], "ID": cliente["portfolioId"],
+            "Cliente": nome, "ID": pid,
             "Dias úteis com dados": None, "Mínimo (R$)": None, "Máximo (R$)": None,
             "Média pro rata (R$)": None, "Último dia útil": None, "Patrimônio final (R$)": None,
         })
@@ -74,7 +112,7 @@ for cliente in clientes:
 # ── Gera Excel ────────────────────────────────────────────────
 wb = openpyxl.Workbook()
 ws = wb.active
-ws.title = "Patrimônio Maio 2026"
+ws.title = "Patrimônio junho 2026"
 
 colunas = ["Cliente", "ID", "Dias úteis com dados", "Mínimo (R$)",
            "Máximo (R$)", "Média pro rata (R$)", "Último dia útil", "Patrimônio final (R$)"]
@@ -108,5 +146,5 @@ for i, w in enumerate(larguras, 1):
 ws.row_dimensions[1].height = 22
 ws.freeze_panes = "A2"
 
-wb.save("patrimonio_pro_rata_maio_2026.xlsx")
-print("✅ Arquivo gerado: patrimonio_pro_rata_maio_2026.xlsx")
+wb.save("patrimonio_pro_rata_junho_2026.xlsx")
+print(f"\n✅ {len(linhas)} portfólios exportados → patrimonio_pro_rata_junho_2026.xlsx")
