@@ -1456,7 +1456,7 @@
           ? 'FIXED_INCOME' : 'MULTIMARKET';
 
         const row = document.createElement('div');
-        row.style.cssText = 'border-bottom:1px solid #e8eef4; padding:12px 0; display:grid; grid-template-columns:1fr 180px 170px; gap:10px; align-items:center;';
+        row.style.cssText = 'border-bottom:1px solid #e8eef4; padding:12px 0; display:grid; grid-template-columns:1fr 160px 155px 195px; gap:10px; align-items:center;';
         row.innerHTML = `
           <div>
             <div style="font-size:13px; font-weight:600; color:#1B3A5C; margin-bottom:2px;">${nomeLimpo}</div>
@@ -1477,6 +1477,19 @@
             <option value="STOCKS"         ${assetDefault==='STOCKS'         ?'selected':''}>Ações</option>
             <option value="OFFSHORE"       ${assetDefault==='OFFSHORE'       ?'selected':''}>Offshore</option>
             <option value="CASH"           ${assetDefault==='CASH'           ?'selected':''}>Caixa</option>
+          </select>
+          <select id="liq-input-${encodeURIComponent(p.nome)}"
+            style="padding:7px 10px; border:1.5px solid #d1dbe6; border-radius:6px; font-size:12px;
+                   font-family:Arial,sans-serif; width:100%;">
+            <option value="">— selecione —</option>
+            <option value="Disponível (D+0 / D+1)">Disponível (D+0 / D+1)</option>
+            <option value="Curto Prazo (D+2 a D+30)">Curto Prazo (D+2 a D+30)</option>
+            <option value="Médio Prazo (D+31 a D+90)">Médio Prazo (D+31 a D+90)</option>
+            <option value="Longo Prazo (91 dias a 1 ano)">Longo Prazo (91 dias a 1 ano)</option>
+            <option value="Longo Prazo (1 a 2 anos)">Longo Prazo (1 a 2 anos)</option>
+            <option value="Longo Prazo (2 a 5 anos)">Longo Prazo (2 a 5 anos)</option>
+            <option value="Longo Prazo (Superior a 5 anos)">Longo Prazo (Superior a 5 anos)</option>
+            <option value="Sem liquidez (ilíquido)">Sem liquidez (ilíquido)</option>
           </select>`;
         lista.appendChild(row);
       });
@@ -1498,22 +1511,71 @@
     input.value = v;
   }
 
-  async function confirmarEnvioGorila() {
+  function _coletarDadosFundos() {
     const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF');
     const cnpjs  = {};
-
     fundos.forEach(p => {
-      const key    = encodeURIComponent(p.nome);
+      const key   = encodeURIComponent(p.nome);
       const cnpjEl = document.getElementById(`cnpj-input-${key}`);
       const clsEl  = document.getElementById(`cls-input-${key}`);
-      if (cnpjEl || clsEl) {
-        cnpjs[p.nome] = {
-          cnpj:        (cnpjEl?.value || '').replace(/\D/g, ''),
-          asset_class: clsEl?.value || 'MULTIMARKET',
-        };
-      }
+      const liqEl  = document.getElementById(`liq-input-${key}`);
+      cnpjs[p.nome] = {
+        cnpj:               (cnpjEl?.value || '').replace(/\D/g, ''),
+        asset_class:        clsEl?.value || 'MULTIMARKET',
+        liquidity_category: liqEl?.value || '',
+      };
     });
+    return cnpjs;
+  }
 
+  async function salvarSemEnviar() {
+    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF');
+
+    // Valida liquidez
+    const semLiquidez = fundos.filter(p => {
+      const liqEl = document.getElementById(`liq-input-${encodeURIComponent(p.nome)}`);
+      return !liqEl?.value;
+    });
+    if (semLiquidez.length > 0) {
+      alert(`Informe a liquidez de todos os fundos antes de salvar.\nFaltando: ${semLiquidez.map(p => p.nome.replace(/^\(\d+\)\s*/, '')).join(', ')}`);
+      return;
+    }
+
+    const cnpjs = _coletarDadosFundos();
+    fecharModalCnpj();
+    setItauStatus('loading', 'Salvando informações dos fundos...');
+
+    try {
+      const res  = await fetch('/api/gorila/salvar-fundos', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ cnpjs_fundos: cnpjs }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setItauStatus('success', `💾 Informações de ${Object.keys(cnpjs).length} fundo(s) salvas. Você pode enviar para a Gorila quando quiser.`);
+      } else {
+        setItauStatus('error', `❌ Erro ao salvar: ${data.erro}`);
+      }
+    } catch(e) {
+      setItauStatus('error', 'Erro de conexão: ' + e.message);
+    }
+  }
+
+  async function confirmarEnvioGorila() {
+    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF');
+
+    // Valida liquidez antes de fechar o modal
+    const semLiquidez = fundos.filter(p => {
+      const liqEl = document.getElementById(`liq-input-${encodeURIComponent(p.nome)}`);
+      return !liqEl?.value;
+    });
+    if (semLiquidez.length > 0) {
+      alert(`Informe a liquidez de todos os fundos antes de continuar.\nFaltando: ${semLiquidez.map(p => p.nome.replace(/^\(\d+\)\s*/, '')).join(', ')}`);
+      return;
+    }
+
+    const cnpjs = _coletarDadosFundos();
     fecharModalCnpj();
     setItauStatus('loading', 'Enviando posições para a Gorila...');
 
@@ -1584,26 +1646,32 @@
 
     <!-- Instrução -->
     <div style="padding:14px 24px 0; font-size:13px; color:#4a5568; line-height:1.6;">
-      CDBs serão enviados automaticamente. Para fundos e previdência, informe o <strong>CNPJ</strong> e a <strong>classe</strong> de cada um.
-      Se o fundo já estiver na base da Gorila, o CNPJ é usado para localizá-lo — caso contrário, ele será criado.
+      CDBs serão enviados automaticamente. Para fundos e previdência, informe o <strong>CNPJ</strong>, a <strong>classe</strong> e a <strong>liquidez</strong> de cada um.
+      Se o fundo já estiver na base da Gorila, o CNPJ é usado para localizá-lo — caso contrário, ele será criado. A liquidez é salva automaticamente para os próximos laudos.
     </div>
 
     <!-- Header da lista -->
-    <div style="padding:12px 24px 6px; display:grid; grid-template-columns:1fr 180px 170px; gap:10px;">
+    <div style="padding:12px 24px 6px; display:grid; grid-template-columns:1fr 160px 155px 195px; gap:10px;">
       <div style="font-size:11px; font-weight:700; color:#8fa3b8; text-transform:uppercase; letter-spacing:.5px;">Fundo</div>
       <div style="font-size:11px; font-weight:700; color:#8fa3b8; text-transform:uppercase; letter-spacing:.5px;">CNPJ</div>
       <div style="font-size:11px; font-weight:700; color:#8fa3b8; text-transform:uppercase; letter-spacing:.5px;">Classe Gorila</div>
+      <div style="font-size:11px; font-weight:700; color:#8fa3b8; text-transform:uppercase; letter-spacing:.5px;">Liquidez</div>
     </div>
 
     <!-- Lista de fundos (scrollável) -->
     <div id="modal-cnpj-lista" style="overflow-y:auto; padding:0 24px 16px; flex:1;"></div>
 
     <!-- Footer -->
-    <div style="padding:16px 24px; border-top:1px solid #e8eef4; display:flex; justify-content:flex-end; gap:10px;">
+    <div style="padding:16px 24px; border-top:1px solid #e8eef4; display:flex; justify-content:space-between; align-items:center; gap:10px;">
       <button onclick="fecharModalCnpj()" class="btn" style="background:#f1f5f9; color:#4a5568; border-color:#d1dbe6;">Cancelar</button>
-      <button onclick="confirmarEnvioGorila()" class="btn btn-primary" style="background:#1a7a4a; border-color:#1a7a4a;">
-        ✅ Confirmar e Enviar
-      </button>
+      <div style="display:flex; gap:10px;">
+        <button onclick="salvarSemEnviar()" class="btn" style="background:#f0f4f8; color:#1B3A5C; border-color:#b0bec5;">
+          💾 Salvar sem enviar
+        </button>
+        <button onclick="confirmarEnvioGorila()" class="btn btn-primary" style="background:#1a7a4a; border-color:#1a7a4a;">
+          🚀 Confirmar e Enviar
+        </button>
+      </div>
     </div>
   </div>
 </div>

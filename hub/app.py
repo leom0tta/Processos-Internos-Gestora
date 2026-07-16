@@ -461,6 +461,36 @@ def api_download(filename):
 
 
 # ============================================================
+# GORILA — SALVAR FUNDOS SEM ENVIAR
+# ============================================================
+
+@app.route('/api/gorila/salvar-fundos', methods=['POST'])
+@login_required
+def api_gorila_salvar_fundos():
+    """
+    Salva CNPJ, classe e liquidez dos fundos no SharePoint
+    sem enviar nada para a Gorila. Útil para cadastrar as
+    informações com antecedência e enviar depois.
+    """
+    data         = request.get_json(force=True)
+    cnpjs_fundos = data.get('cnpjs_fundos', {})
+
+    if not cnpjs_fundos:
+        return jsonify({'ok': False, 'erro': 'Nenhum fundo informado.'}), 400
+
+    salvos = 0
+    import re as _re
+    for nome_fundo, info in cnpjs_fundos.items():
+        liq_cat    = info.get('liquidity_category', '')
+        nome_limpo = _re.sub(r'^\(\d+\)\s*', '', nome_fundo).strip()
+        if liq_cat and nome_limpo:
+            sp_db().upsert_liquidity_mapping(nome_limpo, liq_cat)
+            salvos += 1
+
+    return jsonify({'ok': True, 'salvos': salvos})
+
+
+# ============================================================
 # PARSERS DE EXTRATO
 # ============================================================
 
@@ -536,7 +566,15 @@ def api_gorila_upload_posicao_itau():
                 info      = cnpjs_fundos.get(nome, {})
                 cnpj      = info.get('cnpj', '')
                 asset_cls = info.get('asset_class', 'MULTIMARKET')
+                liq_cat   = info.get('liquidity_category', '')
                 sec_id    = gorila.buscar_ou_criar_fundo(pos, cnpj=cnpj, asset_class=asset_cls)
+
+                # Salva liquidez no SharePoint para uso futuro nos laudos
+                nome_limpo = nome  # gorila_client limpa internamente
+                if liq_cat:
+                    import re as _re
+                    nome_limpo = _re.sub(r'^\(\d+\)\s*', '', nome).strip()
+                    sp_db().upsert_liquidity_mapping(nome_limpo, liq_cat)
 
             tx = gorila.criar_transacao(portfolio_id, sec_id, pos)
             resultados.append({
