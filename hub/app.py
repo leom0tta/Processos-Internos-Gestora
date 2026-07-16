@@ -5,7 +5,6 @@ Hub de Processos - Fatorial Capital
 Backend Flask — usa SharePoint como banco de dados (sem PostgreSQL)
 """
 
-
 import os
 import sys
 import threading
