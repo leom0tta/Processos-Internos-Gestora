@@ -673,7 +673,11 @@ def api_documentos_clientes():
         resp = requests.get(url, headers=hdrs,
                             params={'$top': 999, '$select': 'id,name,folder'})
         resp.raise_for_status()
-        pastas_clientes = [i for i in resp.json().get('value', []) if 'folder' in i]
+        PASTAS_IGNORADAS = {'0. Documentação Padrão', '0. Documentacao Padrao'}
+        pastas_clientes = [
+            i for i in resp.json().get('value', [])
+            if 'folder' in i and i.get('name', '') not in PASTAS_IGNORADAS
+        ]
 
         def doc_assinado(arquivos: list, *palavras_chave) -> bool:
             """True se existe PDF começando com CONCLUÍ(DO) e contendo todas as palavras-chave."""
