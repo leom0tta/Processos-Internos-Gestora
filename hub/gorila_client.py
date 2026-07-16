@@ -161,6 +161,101 @@ class GorilaClient:
         logger.info(f"Fundo criado: id={result['id']} — {nome_limpo}")
         return result['id']
 
+    # ── Poupança (CUSTOM/CASH) ─────────────────────────────────────────────
+
+    def criar_ou_buscar_poupanca(self, posicao, sp_db=None):
+        """
+        Localiza ou cria um security CUSTOM/CASH para uma conta poupança.
+
+        O security é global no Gorila (compartilhado entre portfólios).
+        O mapeamento nome → security_id é cacheado no SharePoint para evitar
+        duplicatas entre uploads mensais e entre clientes distintos.
+
+        Retorna o security_id (int).
+        """
+        nome_limpo = self._limpar_nome_fundo(posicao['nome']) or 'Poupança Itaú'
+
+        # 1. Consulta cache do SharePoint
+        if sp_db is not None:
+            cached = sp_db.get_custom_security_id(nome_limpo)
+            if cached:
+                logger.info(f"[Poupança] security_id em cache: {cached} — {nome_limpo}")
+                return cached
+
+        # 2. Busca no Gorila por nome
+        items = self.buscar_security(nome_limpo)
+        for item in items:
+            if item.get('name', '').upper() == nome_limpo.upper():
+                sec_id = item['id']
+                logger.info(f"[Poupança] Encontrado no Gorila: id={sec_id} — {nome_limpo}")
+                if sp_db is not None:
+                    sp_db.save_custom_security_id(nome_limpo, sec_id)
+                return sec_id
+
+        # 3. Cria como CUSTOM/CASH
+        initial_date = self._fmt_date(posicao.get('data_inicio')) or str(date.today())
+        payload = {
+            'type':        'CUSTOM',
+            'initialDate': initial_date,
+            'assetClass':  'CASH',
+            'name':        nome_limpo,
+            'description': f'Conta poupança — {nome_limpo}',
+        }
+        result = self._post('/securities', payload)
+        sec_id = result['id']
+        logger.info(f"[Poupança] Criado no Gorila: id={sec_id} — {nome_limpo}")
+        if sp_db is not None:
+            sp_db.save_custom_security_id(nome_limpo, sec_id)
+        return sec_id
+
+    def atualizar_ou_criar_transacao_poupanca(self, portfolio_id, security_id, posicao):
+        """
+        Mês 1: cria INITIAL_CUSTODY_ADJUSTMENT com saldo_atual como quantity.
+        Mês 2+: faz PATCH na transação existente com o novo saldo.
+
+        Isso garante que cada portfólio tenha exatamente UMA transação
+        para a poupança, sempre refletindo o saldo mais recente.
+        """
+        saldo = round(float(posicao['saldo_atual']), 2)
+        transact_date = self._fmt_date(posicao.get('data_inicio')) or str(date.today())
+
+        # Busca transação existente para esse security nesse portfólio
+        result = self._get(
+            f'/portfolios/{portfolio_id}/transactions',
+            params={'securityId': security_id, 'limit': 10},
+        )
+        records = result.get('records', result.get('items', []))
+
+        if records:
+            # Atualiza a mais recente
+            tx_id = records[0]['id']
+            r = self.session.patch(
+                f"{GORILA_BASE}/portfolios/{portfolio_id}/transactions/{tx_id}",
+                json={'quantity': saldo, 'transactDate': transact_date},
+                timeout=20,
+            )
+            if r.status_code not in (200, 201):
+                raise GorilaError(
+                    f"PATCH transação poupança → HTTP {r.status_code}: {r.text[:300]}"
+                )
+            tx = r.json()
+            logger.info(f"[Poupança] Transação atualizada: id={tx_id}, quantity={saldo}")
+            return tx
+        else:
+            # Primeira vez: cria
+            payload = {
+                'type':         'INITIAL_CUSTODY_ADJUSTMENT',
+                'transactDate': transact_date,
+                'side':         'BUY',
+                'quantity':     saldo,
+                'price':        1.0,
+                'brokerId':     ITAU_CNPJ,
+                'security':     {'id': security_id},
+            }
+            tx = self._post(f'/portfolios/{portfolio_id}/transactions', payload)
+            logger.info(f"[Poupança] Transação criada: id={tx.get('id')}, quantity={saldo}")
+            return tx
+
     # ── Transações ─────────────────────────────────────────────────────────
 
     def criar_transacao(self, portfolio_id, security_id, posicao):

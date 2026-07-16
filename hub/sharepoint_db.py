@@ -39,6 +39,8 @@ SHEET_COLUMNS = {
     'asset_type_mappings':  ['security_type', 'asset_class', 'updated_at'],
     'asset_name_mappings':  ['asset_name',    'asset_class', 'updated_at'],
     'liquidity_mappings':   ['asset_name',    'liquidity_category', 'updated_at'],
+    # Mapeia nome do ativo customizado → security_id no Gorila (compartilhado entre portfólios)
+    'custom_securities':    ['asset_name',    'security_id', 'updated_at'],
 }
 
 
@@ -393,6 +395,45 @@ class SharePointDB:
         dfs['asset_type_mappings'] = pd.DataFrame(rows, columns=SHEET_COLUMNS['asset_type_mappings'])
         self._write_all(dfs)
         logger.info(f'[SharePointDB] Seed: {len(rows)} mapeamentos inseridos.')
+
+    # ════════════════════════════════════════════════════════
+    # UTILITÁRIOS
+    # ════════════════════════════════════════════════════════
+
+    # ════════════════════════════════════════════════════════
+    # CUSTOM SECURITIES (ex: poupança)
+    # ════════════════════════════════════════════════════════
+
+    def get_custom_security_id(self, asset_name: str):
+        """Retorna o security_id do Gorila para um ativo customizado, ou None."""
+        dfs = self._read_all()
+        df  = dfs.get('custom_securities', pd.DataFrame(columns=SHEET_COLUMNS['custom_securities']))
+        row = df[df['asset_name'] == asset_name]
+        if row.empty:
+            return None
+        val = row.iloc[0]['security_id']
+        return int(val) if val is not None and str(val) != 'nan' else None
+
+    def save_custom_security_id(self, asset_name: str, security_id: int):
+        """Persiste o vínculo nome → security_id no SharePoint."""
+        dfs  = self._read_all()
+        if 'custom_securities' not in dfs:
+            dfs['custom_securities'] = pd.DataFrame(columns=SHEET_COLUMNS['custom_securities'])
+        df   = dfs['custom_securities']
+        mask = df['asset_name'] == asset_name
+        now  = self._now()
+        if mask.any():
+            df.loc[mask, 'security_id'] = security_id
+            df.loc[mask, 'updated_at']  = now
+        else:
+            df = pd.concat([df, pd.DataFrame([{
+                'asset_name':  asset_name,
+                'security_id': security_id,
+                'updated_at':  now,
+            }])], ignore_index=True)
+        dfs['custom_securities'] = df
+        self._write_all(dfs)
+        logger.info(f'[SharePointDB] custom_security salvo: {asset_name} → {security_id}')
 
     # ════════════════════════════════════════════════════════
     # UTILITÁRIOS

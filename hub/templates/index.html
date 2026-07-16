@@ -1440,13 +1440,15 @@
     }
 
     // Filtra posições que NÃO são CDB (fundos, previdência, poupança)
-    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF');
+    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF' && p.classe !== 'Poupança');
 
     const modal   = document.getElementById('modal-cnpj-fundos');
     const lista   = document.getElementById('modal-cnpj-lista');
     const counter = document.getElementById('modal-cnpj-counter');
 
-    counter.textContent = `${_itauPosicoes.length} posições (${_itauPosicoes.filter(p => p.classe === 'CDB/RF').length} CDBs + ${fundos.length} fundos/outros)`;
+    const nCDB      = _itauPosicoes.filter(p => p.classe === 'CDB/RF').length;
+    const nPoupanca = _itauPosicoes.filter(p => p.classe === 'Poupança').length;
+    counter.textContent = `${_itauPosicoes.length} posições — ${nCDB} CDB(s), ${nPoupanca} poupança (automático), ${fundos.length} fundo(s)/outros`;
 
     lista.innerHTML = '';
 
@@ -1515,7 +1517,7 @@
   }
 
   function _coletarDadosFundos() {
-    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF');
+    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF' && p.classe !== 'Poupança');
     const cnpjs  = {};
     fundos.forEach(p => {
       const key   = encodeURIComponent(p.nome);
@@ -1532,7 +1534,7 @@
   }
 
   async function salvarSemEnviar() {
-    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF');
+    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF' && p.classe !== 'Poupança');
 
     // Valida liquidez
     const semLiquidez = fundos.filter(p => {
@@ -1566,7 +1568,7 @@
   }
 
   async function confirmarEnvioGorila() {
-    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF');
+    const fundos = _itauPosicoes.filter(p => p.classe !== 'CDB/RF' && p.classe !== 'Poupança');
 
     // Valida liquidez antes de fechar o modal
     const semLiquidez = fundos.filter(p => {

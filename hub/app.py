@@ -548,7 +548,15 @@ def api_gorila_upload_posicao_itau():
         try:
             if pos.get('classe') == 'CDB/RF':
                 sec_id = gorila.criar_cdb(pos)
+                tx     = gorila.criar_transacao(portfolio_id, sec_id, pos)
+
+            elif pos.get('classe') == 'Poupança':
+                # Security CUSTOM/CASH compartilhado; transação individual por portfólio
+                sec_id = gorila.criar_ou_buscar_poupanca(pos, sp_db=sp_db())
+                tx     = gorila.atualizar_ou_criar_transacao_poupanca(portfolio_id, sec_id, pos)
+
             else:
+                # Fundo / Previdência — requer CNPJ e classe no modal
                 info      = cnpjs_fundos.get(nome, {})
                 cnpj      = info.get('cnpj', '')
                 asset_cls = info.get('asset_class', 'MULTIMARKET')
@@ -556,13 +564,12 @@ def api_gorila_upload_posicao_itau():
                 sec_id    = gorila.buscar_ou_criar_fundo(pos, cnpj=cnpj, asset_class=asset_cls)
 
                 # Salva liquidez no SharePoint para uso futuro nos laudos
-                nome_limpo = nome  # gorila_client limpa internamente
                 if liq_cat:
                     import re as _re
                     nome_limpo = _re.sub(r'^\(\d+\)\s*', '', nome).strip()
                     sp_db().upsert_liquidity_mapping(nome_limpo, liq_cat)
 
-            tx = gorila.criar_transacao(portfolio_id, sec_id, pos)
+                tx = gorila.criar_transacao(portfolio_id, sec_id, pos)
             resultados.append({
                 'nome':           nome,
                 'classe':         pos.get('classe'),
