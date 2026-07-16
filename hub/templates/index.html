@@ -669,6 +669,10 @@
             <button class="btn btn-primary" id="btn-processar-itau" onclick="uploadExtratoItau()" disabled>
               <span>⚙️</span> Processar Extrato
             </button>
+            <button class="btn btn-primary" id="btn-enviar-gorila" onclick="abrirModalCnpjFundos('enviar')"
+              style="display:none; background:#1a7a4a; border-color:#1a7a4a;">
+              🚀 Enviar para Gorila
+            </button>
             <span id="itau-status-inline" style="font-size:13.5px; display:none;"></span>
           </div>
         </div>
@@ -725,13 +729,6 @@
             </div>
           </div>
 
-          <!-- Ação Gorila -->
-          <div style="display:flex; justify-content:flex-end; margin-top:18px;">
-            <button class="btn btn-primary" id="btn-enviar-gorila" onclick="abrirModalCnpjFundos()"
-              style="background:#1a7a4a; border-color:#1a7a4a;">
-              🚀 Enviar para Gorila
-            </button>
-          </div>
 
         </div><!-- /card tabela -->
         </div><!-- /itau-resultado -->
@@ -1292,6 +1289,7 @@
       _itauPosicoes = data.posicoes;
       renderizarResultadoItau(data);
       setItauStatus('success', `${data.posicoes.length} posições extraídas — posição de ${data.meta.data_posicao || '?'}.`);
+      document.getElementById('btn-enviar-gorila').style.display = 'inline-flex';
 
     } catch (e) {
       setItauStatus('error', 'Erro de conexão: ' + e.message);
@@ -1393,16 +1391,16 @@
 
   async function carregarClientesItau() {
     try {
-      const res  = await fetch('/api/clientes');
+      const res  = await fetch('/api/portfolios');
       const data = await res.json();
-      if (!data.ok) return;
-      const sel = document.getElementById('itau-cliente-sel');
-      data.clientes.forEach(c => {
+      if (!data.ok || !data.portfolios.length) return;
+      const sel    = document.getElementById('itau-cliente-sel');
+      const sorted = [...data.portfolios].sort((a, b) =>
+        (a.name || a.id).localeCompare(b.name || b.id, 'pt-BR'));
+      sorted.forEach(p => {
         const o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = c.nome;
-        o.dataset.portfolioId   = c.portfolio_id   || '';
-        o.dataset.portfolioName = c.gorila_portfolio_name || '';
+        o.value       = p.id;          // portfolio_id direto
+        o.textContent = p.name || p.id;
         sel.appendChild(o);
       });
     } catch(e) { /* silencioso */ }
@@ -1410,15 +1408,11 @@
 
   function onItauClienteChange() {
     const sel = document.getElementById('itau-cliente-sel');
-    const opt = sel.options[sel.selectedIndex];
     _itauClienteId = sel.value || null;
     const info = document.getElementById('itau-cliente-info');
-    if (_itauClienteId && opt.dataset.portfolioId) {
-      info.textContent = `Portfolio Gorila: ${opt.dataset.portfolioName || opt.dataset.portfolioId}`;
+    if (_itauClienteId) {
+      info.textContent = `Portfolio: ${sel.options[sel.selectedIndex].textContent}`;
       info.style.color = '#1a7a4a';
-    } else if (_itauClienteId) {
-      info.textContent = '⚠️ Cliente sem Portfolio ID Gorila configurado';
-      info.style.color = '#e07b00';
     } else {
       info.textContent = '';
     }
@@ -1426,14 +1420,28 @@
 
   // ── Modal de CNPJ dos fundos ──────────────────────
 
-  function abrirModalCnpjFundos() {
+  let _modalModo = 'enviar'; // 'enviar' ou 'salvar'
+
+  function abrirModalCnpjFundos(modo = 'enviar') {
+    _modalModo = modo;
     if (!_itauClienteId) {
-      alert('Selecione um cliente antes de enviar para a Gorila.');
+      alert('Selecione um cliente antes de prosseguir.');
       return;
     }
     if (!_itauPosicoes.length) {
       alert('Nenhuma posição carregada. Processe o extrato primeiro.');
       return;
+    }
+
+    // Ajusta título e botão de confirmação conforme o modo
+    const titulo = document.getElementById('modal-cnpj-titulo');
+    const btnConfirmar = document.getElementById('btn-confirmar-modal');
+    if (modo === 'salvar') {
+      if (titulo) titulo.textContent = 'Salvar dados dos fundos';
+      if (btnConfirmar) { btnConfirmar.textContent = '💾 Salvar'; btnConfirmar.onclick = salvarSemEnviar; }
+    } else {
+      if (titulo) titulo.textContent = 'Enviar para Gorila';
+      if (btnConfirmar) { btnConfirmar.textContent = '🚀 Confirmar e Enviar'; btnConfirmar.onclick = confirmarEnvioGorila; }
     }
 
     // Filtra posições que NÃO são CDB (fundos, previdência, poupança)
@@ -1584,7 +1592,7 @@
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          cliente_id:   parseInt(_itauClienteId),
+          portfolio_id: _itauClienteId,
           posicoes:     _itauPosicoes,
           cnpjs_fundos: cnpjs,
         }),
@@ -1638,7 +1646,7 @@
     <!-- Header -->
     <div style="padding:20px 24px 16px; border-bottom:1px solid #e8eef4; display:flex; justify-content:space-between; align-items:flex-start;">
       <div>
-        <div style="font-size:17px; font-weight:700; color:#1B3A5C; margin-bottom:4px;">Enviar para Gorila</div>
+        <div id="modal-cnpj-titulo" style="font-size:17px; font-weight:700; color:#1B3A5C; margin-bottom:4px;">Enviar para Gorila</div>
         <div id="modal-cnpj-counter" style="font-size:12.5px; color:#8fa3b8;"></div>
       </div>
       <button onclick="fecharModalCnpj()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#8fa3b8; line-height:1;">×</button>

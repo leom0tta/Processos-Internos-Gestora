@@ -527,26 +527,12 @@ def api_parse_extrato_ion_itau():
 @login_required
 def api_gorila_upload_posicao_itau():
     data         = request.get_json(force=True)
-    cliente_id   = data.get('cliente_id')
+    portfolio_id = data.get('portfolio_id')
     posicoes     = data.get('posicoes', [])
     cnpjs_fundos = data.get('cnpjs_fundos', {})
 
-    if not cliente_id or not posicoes:
-        return jsonify({'ok': False, 'erro': 'cliente_id e posicoes são obrigatórios.'}), 400
-
-    cliente = sp_db().get_cliente_by_id(cliente_id)
-    if not cliente:
-        return jsonify({'ok': False, 'erro': 'Cliente não encontrado.'}), 404
-
-    portfolio_id = cliente.get('portfolio_id')
-    if not portfolio_id:
-        return jsonify({
-            'ok':  False,
-            'erro': (
-                f"Cliente '{cliente['nome']}' não tem Portfolio ID Gorila configurado. "
-                'Configure em Cadastro de Clientes antes de prosseguir.'
-            ),
-        }), 400
+    if not portfolio_id or not posicoes:
+        return jsonify({'ok': False, 'erro': 'portfolio_id e posicoes são obrigatórios.'}), 400
 
     try:
         from gorila_client import GorilaClient
