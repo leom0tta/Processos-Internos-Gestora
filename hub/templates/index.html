@@ -852,6 +852,19 @@
 
       selPortfolio.innerHTML = '<option value="">Selecione um cliente primeiro</option>';
 
+      // ── Aproveita os dados para popular o seletor da aba Itaú ──
+      const selItau = document.getElementById('itau-cliente-sel');
+      if (selItau) {
+        const sortedItau = [..._portfolios].sort((a, b) =>
+          (a.name || a.id).localeCompare(b.name || b.id, 'pt-BR'));
+        sortedItau.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value       = p.id;
+          opt.textContent = p.name || p.id;
+          selItau.appendChild(opt);
+        });
+      }
+
     } catch (e) {
       selCliente.innerHTML   = '<option value="">Erro ao carregar clientes</option>';
       selPortfolio.innerHTML = '<option value="">—</option>';
@@ -1382,29 +1395,11 @@
   }
 
   // ── Init ─────────────────────────────────────────
-  carregarPortfolios();
-  carregarClientesItau();
+  carregarPortfolios(); // popula Laudo + Itaú em uma única requisição
 
   // ── Clientes — seletor na aba Itaú ───────────────
 
   let _itauClienteId = null;
-
-  async function carregarClientesItau() {
-    try {
-      const res  = await fetch('/api/portfolios');
-      const data = await res.json();
-      if (!data.ok || !data.portfolios.length) return;
-      const sel    = document.getElementById('itau-cliente-sel');
-      const sorted = [...data.portfolios].sort((a, b) =>
-        (a.name || a.id).localeCompare(b.name || b.id, 'pt-BR'));
-      sorted.forEach(p => {
-        const o = document.createElement('option');
-        o.value       = p.id;          // portfolio_id direto
-        o.textContent = p.name || p.id;
-        sel.appendChild(o);
-      });
-    } catch(e) { /* silencioso */ }
-  }
 
   function onItauClienteChange() {
     const sel = document.getElementById('itau-cliente-sel');
