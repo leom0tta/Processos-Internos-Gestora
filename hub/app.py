@@ -13,6 +13,7 @@ from functools import wraps
 from pathlib import Path
 
 import msal
+import requests
 from flask import (
     Flask, render_template, request, jsonify,
     send_file, session, redirect, url_for
