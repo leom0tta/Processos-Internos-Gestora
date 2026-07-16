@@ -276,6 +276,10 @@
       <span class="icon">📋</span> Laudo de Suitability
     </a>
 
+    <a class="nav-item" data-page="documentos" onclick="showPage('documentos', this)">
+      <span class="icon">📁</span> Documentos
+    </a>
+
     <a class="nav-item" data-page="categorizacao" onclick="showPage('categorizacao', this)">
       <span class="icon">🏷️</span> Fluxo de Categorização
     </a>
@@ -774,6 +778,66 @@
       </div></div>
     </div>
 
+    <!-- ── PÁGINA: Documentos ───────────────────── -->
+    <div id="page-documentos" class="page">
+      <div class="page-header">
+        <h1>Documentos de Clientes</h1>
+        <p>Status dos documentos obrigatórios: Contrato de Gestão, KYC e IPS.</p>
+      </div>
+
+      <!-- Filtros + ações -->
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
+        <div style="display:flex; gap:0; border:1.5px solid #d1dbe6; border-radius:6px; overflow:hidden;">
+          <button id="docs-filtro-todos"       onclick="filtrarDocs('todos')"
+            style="padding:7px 16px; border:none; cursor:pointer; font-size:13px; font-family:Arial,sans-serif; background:#1B3A5C; color:#fff; font-weight:600;">
+            Todos
+          </button>
+          <button id="docs-filtro-incompletos" onclick="filtrarDocs('incompletos')"
+            style="padding:7px 16px; border:none; cursor:pointer; font-size:13px; font-family:Arial,sans-serif; background:#fff; color:#4a5568;">
+            Incompletos
+          </button>
+          <button id="docs-filtro-completos"   onclick="filtrarDocs('completos')"
+            style="padding:7px 16px; border:none; cursor:pointer; font-size:13px; font-family:Arial,sans-serif; background:#fff; color:#4a5568;">
+            Completos
+          </button>
+        </div>
+
+        <input id="docs-busca" type="text" placeholder="Buscar cliente..."
+          oninput="filtrarDocs()"
+          style="padding:8px 12px; border:1.5px solid #d1dbe6; border-radius:6px; font-size:13px; font-family:Arial,sans-serif; min-width:200px;" />
+
+        <span id="docs-contador" style="font-size:13px; color:#8fa3b8; margin-left:auto;"></span>
+
+        <button onclick="recarregarDocs()"
+          style="padding:8px 14px; border:1.5px solid #d1dbe6; border-radius:6px; font-size:13px; font-family:Arial,sans-serif; background:#fff; cursor:pointer; color:#4a5568;">
+          🔄 Recarregar
+        </button>
+      </div>
+
+      <!-- Estado de carregamento -->
+      <div id="docs-loading" style="display:none; text-align:center; padding:60px 0; color:#8fa3b8; font-size:14px;">
+        <div style="font-size:28px; margin-bottom:12px;">⏳</div>
+        Lendo pastas do SharePoint… isso pode levar alguns segundos.
+      </div>
+      <div id="docs-erro" style="display:none; padding:18px; background:#fff5f5; border:1.5px solid #feb2b2; border-radius:8px; color:#c53030; font-size:13.5px;"></div>
+
+      <!-- Tabela -->
+      <div id="docs-tabela-wrap" style="display:none;">
+        <table style="width:100%; border-collapse:collapse; font-size:13.5px; font-family:Arial,sans-serif;">
+          <thead>
+            <tr style="background:#1B3A5C; color:#fff;">
+              <th style="text-align:left; padding:11px 16px; font-weight:600;">Cliente</th>
+              <th style="text-align:center; padding:11px 16px; font-weight:600; white-space:nowrap;">Contrato de Gestão</th>
+              <th style="text-align:center; padding:11px 16px; font-weight:600;">KYC</th>
+              <th style="text-align:center; padding:11px 16px; font-weight:600;">IPS</th>
+              <th style="text-align:center; padding:11px 16px; font-weight:600;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="docs-tbody"></tbody>
+        </table>
+      </div>
+    </div><!-- /page-documentos -->
+
   </main>
 </div><!-- /layout -->
 
@@ -817,6 +881,97 @@
     document.getElementById('page-' + name).classList.add('active');
     el.classList.add('active');
     if (name === 'categorizacao') carregarNameMappings();
+    if (name === 'documentos')    carregarDocs();
+  }
+
+  // ── Documentos de Clientes ───────────────────────────────
+  let _docsData    = [];
+  let _docsFiltro  = 'todos';
+
+  async function carregarDocs(forcar = false) {
+    if (_docsData.length && !forcar) { renderizarDocs(); return; }
+
+    document.getElementById('docs-loading').style.display    = 'block';
+    document.getElementById('docs-tabela-wrap').style.display = 'none';
+    document.getElementById('docs-erro').style.display        = 'none';
+
+    try {
+      const res  = await fetch('/api/documentos-clientes');
+      const data = await res.json();
+
+      if (!data.ok) throw new Error(data.erro || 'Erro desconhecido');
+
+      _docsData = data.clientes;
+      document.getElementById('docs-loading').style.display    = 'none';
+      document.getElementById('docs-tabela-wrap').style.display = 'block';
+      renderizarDocs();
+
+    } catch(e) {
+      document.getElementById('docs-loading').style.display = 'none';
+      const el = document.getElementById('docs-erro');
+      el.style.display = 'block';
+      el.textContent   = '❌ ' + e.message;
+    }
+  }
+
+  async function recarregarDocs() {
+    _docsData = [];
+    await fetch('/api/documentos-clientes/refresh', { method: 'POST' });
+    carregarDocs(true);
+  }
+
+  function filtrarDocs(filtro) {
+    if (filtro) {
+      _docsFiltro = filtro;
+      // Atualiza botões
+      ['todos','incompletos','completos'].forEach(f => {
+        const btn = document.getElementById('docs-filtro-' + f);
+        btn.style.background  = f === filtro ? '#1B3A5C' : '#fff';
+        btn.style.color       = f === filtro ? '#fff'    : '#4a5568';
+        btn.style.fontWeight  = f === filtro ? '600'     : '400';
+      });
+    }
+    renderizarDocs();
+  }
+
+  function renderizarDocs() {
+    const busca = (document.getElementById('docs-busca')?.value || '').toUpperCase().trim();
+    const tbody = document.getElementById('docs-tbody');
+    tbody.innerHTML = '';
+    let visíveis = 0;
+
+    _docsData.forEach((c, idx) => {
+      if (_docsFiltro === 'completos'   && !c.completo) return;
+      if (_docsFiltro === 'incompletos' &&  c.completo) return;
+      if (busca && !c.nome.toUpperCase().includes(busca)) return;
+
+      visíveis++;
+      const bg = idx % 2 === 0 ? '#fff' : '#f7fafc';
+
+      const marca = (ok) => ok
+        ? `<span style="color:#1a7a4a; font-size:16px;">✔</span>`
+        : `<span style="color:#d1dbe6; font-size:16px;">—</span>`;
+
+      const badge = c.completo
+        ? `<span style="background:#e6f4ec; color:#1a7a4a; border-radius:12px; padding:3px 10px; font-size:11.5px; font-weight:600;">Completo</span>`
+        : `<span style="background:#fff3cd; color:#856404; border-radius:12px; padding:3px 10px; font-size:11.5px; font-weight:600;">Incompleto</span>`;
+
+      const tr = document.createElement('tr');
+      tr.style.background = bg;
+      tr.innerHTML = `
+        <td style="padding:10px 16px; color:#1B3A5C; font-weight:500;">${c.nome}</td>
+        <td style="padding:10px 16px; text-align:center;">${marca(c.gestao)}</td>
+        <td style="padding:10px 16px; text-align:center;">${marca(c.kyc)}</td>
+        <td style="padding:10px 16px; text-align:center;">${marca(c.ips)}</td>
+        <td style="padding:10px 16px; text-align:center;">${badge}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const total        = _docsData.length;
+    const incompletos  = _docsData.filter(c => !c.completo).length;
+    document.getElementById('docs-contador').textContent =
+      `${visíveis} cliente(s) exibido(s) — ${incompletos} incompleto(s) de ${total}`;
   }
 
   // ── Dados em memória ────────────────────────────

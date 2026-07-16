@@ -640,6 +640,107 @@ def api_gorila_upload_posicao_itau():
 # ============================================================
 # MAIN
 # ============================================================
+# DOCUMENTOS DE CLIENTES (SharePoint)
+# ============================================================
+
+import unicodedata as _unicodedata
+
+def _sem_acento(texto: str) -> str:
+    """Remove acentos para comparação robusta de nomes de arquivo."""
+    return _unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode().upper()
+
+_docs_cache: dict = {'data': None, 'ts': 0.0}
+_DOCS_CACHE_TTL   = 30 * 60   # 30 minutos
+
+@app.route('/api/documentos-clientes')
+@login_required
+def api_documentos_clientes():
+    import time
+
+    # Retorna cache se ainda válido
+    if _docs_cache['data'] and time.time() - _docs_cache['ts'] < _DOCS_CACHE_TTL:
+        return jsonify(_docs_cache['data'])
+
+    try:
+        db       = sp_db()
+        hdrs     = {'Authorization': f'Bearer {db._get_token()}'}
+        drive_id = db.drive_id
+        pasta    = os.environ.get('SHAREPOINT_DOCS_PATH', 'Documentos Clientes')
+
+        # 1. Lista subpastas dos clientes
+        url  = f'https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{pasta}:/children'
+        resp = requests.get(url, headers=hdrs,
+                            params={'$top': 999, '$select': 'id,name,folder'})
+        resp.raise_for_status()
+        pastas_clientes = [i for i in resp.json().get('value', []) if 'folder' in i]
+
+        def doc_assinado(arquivos: list, *palavras_chave) -> bool:
+            """True se existe PDF começando com CONCLUÍ(DO) e contendo todas as palavras-chave."""
+            for arq in arquivos:
+                s = _sem_acento(arq)
+                if not s.endswith('.PDF'):
+                    continue
+                if not (s.startswith('CONCLUIDO') or s.startswith('CONCLU\xcdDO')):
+                    continue
+                if all(kw in s for kw in palavras_chave):
+                    return True
+            return False
+
+        clientes = []
+        for pasta_cli in pastas_clientes:
+            nome_cli = pasta_cli['name']
+            fid      = pasta_cli['id']
+
+            # 2. Lista arquivos da pasta do cliente
+            url_f  = f'https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{fid}/children'
+            r_f    = requests.get(url_f, headers=hdrs,
+                                  params={'$top': 200, '$select': 'name,file'})
+            if r_f.status_code != 200:
+                continue
+            arquivos = [f['name'] for f in r_f.json().get('value', []) if 'file' in f]
+
+            gestao = doc_assinado(arquivos, 'GESTAO')
+            kyc    = doc_assinado(arquivos, 'KYC')
+            ips    = doc_assinado(arquivos, 'POLITICA')
+
+            clientes.append({
+                'nome':     nome_cli,
+                'gestao':   gestao,
+                'kyc':      kyc,
+                'ips':      ips,
+                'completo': gestao and kyc and ips,
+            })
+
+        # Incompletos primeiro, depois alfabético
+        clientes.sort(key=lambda c: (c['completo'], c['nome'].upper()))
+
+        n_completos   = sum(1 for c in clientes if c['completo'])
+        n_incompletos = len(clientes) - n_completos
+        resultado = {
+            'ok':           True,
+            'clientes':     clientes,
+            'total':        len(clientes),
+            'completos':    n_completos,
+            'incompletos':  n_incompletos,
+        }
+        _docs_cache['data'] = resultado
+        _docs_cache['ts']   = time.time()
+        return jsonify(resultado)
+
+    except Exception as e:
+        return jsonify({'ok': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/documentos-clientes/refresh', methods=['POST'])
+@login_required
+def api_documentos_clientes_refresh():
+    """Invalida o cache para forçar nova leitura do SharePoint."""
+    _docs_cache['data'] = None
+    _docs_cache['ts']   = 0.0
+    return jsonify({'ok': True})
+
+
+# ============================================================
 
 if __name__ == '__main__':
     import webbrowser
