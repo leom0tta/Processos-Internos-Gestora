@@ -673,7 +673,12 @@ def api_documentos_clientes():
         resp = requests.get(url, headers=hdrs,
                             params={'$top': 999, '$select': 'id,name,folder'})
         resp.raise_for_status()
-        PASTAS_IGNORADAS = {'0. Documentação Padrão', '0. Documentacao Padrao'}
+        PASTAS_IGNORADAS = {
+            '0. Documentação Padrão',
+            '0. Documentacao Padrao',
+            'Leonardo Gonçalves Motta-16431664760',
+            'Pablo Navarro Dias Langenbach-93380909734',
+        }
         pastas_clientes = [
             i for i in resp.json().get('value', [])
             if 'folder' in i and i.get('name', '') not in PASTAS_IGNORADAS
