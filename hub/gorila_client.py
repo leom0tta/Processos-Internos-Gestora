@@ -19,6 +19,7 @@ import os
 import re
 import logging
 from datetime import date
+from urllib.parse import urlparse, parse_qs
 
 import requests
 
@@ -160,6 +161,45 @@ class GorilaClient:
         result = self._post('/securities', payload)
         logger.info(f"Fundo criado: id={result['id']} — {nome_limpo}")
         return result['id']
+
+    # ── Consulta de posições existentes ───────────────────────────────────
+
+    def listar_security_ids_com_transacao(self, portfolio_id) -> dict:
+        """
+        Retorna dict {security_id: transaction_id} de TODAS as transações
+        do portfólio, paginando automaticamente.
+
+        Usado no início do upload para saber quais ativos já existem,
+        evitando duplicação de INITIAL_CUSTODY_ADJUSTMENT.
+        """
+        registrados = {}   # security_id (int) → transaction_id (str)
+        page_token  = None
+
+        while True:
+            params = {'limit': 1000}
+            if page_token:
+                params['pageToken'] = page_token
+
+            result  = self._get(f'/portfolios/{portfolio_id}/transactions', params=params)
+            records = result.get('records', [])
+
+            for tx in records:
+                sec = tx.get('security') or {}
+                sid = sec.get('id')
+                tid = tx.get('id')
+                if sid and tid and sid not in registrados:
+                    registrados[sid] = tid   # mantém o mais recente (primeiro da lista)
+
+            next_url = result.get('next')
+            if not next_url:
+                break
+            token = parse_qs(urlparse(next_url).query).get('pageToken', [None])[0]
+            if not token:
+                break
+            page_token = token
+
+        logger.info(f"[Gorila] {len(registrados)} securities com transação em {portfolio_id}")
+        return registrados
 
     # ── Poupança (CUSTOM/CASH) ─────────────────────────────────────────────
 

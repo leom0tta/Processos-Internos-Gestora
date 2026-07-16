@@ -1597,9 +1597,13 @@
       const data = await res.json();
 
       if (data.ok) {
-        setItauStatus('success', `✅ ${data.sucesso}/${data.total} posições enviadas com sucesso para a Gorila.`);
+        const partes = [];
+        if (data.criados     > 0) partes.push(`${data.criados} novo(s)`);
+        if (data.atualizados > 0) partes.push(`${data.atualizados} atualizado(s)`);
+        if (data.ignorados   > 0) partes.push(`${data.ignorados} já existia(m)`);
+        setItauStatus('success', `✅ ${data.total} posições processadas — ${partes.join(', ') || 'nenhuma alteração'}.`);
       } else if (data.sucesso > 0) {
-        setItauStatus('error', `⚠️ ${data.sucesso} enviadas, ${data.erros.length} com erro. Veja detalhes abaixo.`);
+        setItauStatus('error', `⚠️ ${data.sucesso} processadas, ${data.erros.length} com erro. Veja detalhes abaixo.`);
       } else {
         setItauStatus('error', `❌ Erro ao enviar: ${data.erro || (data.erros?.[0]?.erro) || 'Falha desconhecida.'}`);
       }

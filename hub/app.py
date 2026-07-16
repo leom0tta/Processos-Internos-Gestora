@@ -543,17 +543,48 @@ def api_gorila_upload_posicao_itau():
     resultados = []
     erros      = []
 
+    # ── Busca de uma vez todos os securities já registrados no portfólio ──
+    # Evita duplicar INITIAL_CUSTODY_ADJUSTMENT em uploads mensais.
+    try:
+        existentes = gorila.listar_security_ids_com_transacao(portfolio_id)
+    except Exception as e:
+        existentes = {}
+        import logging as _log
+        _log.getLogger(__name__).warning(f"Não foi possível listar transações existentes: {e}")
+
     for pos in posicoes:
         nome = pos.get('nome', '?')
         try:
             if pos.get('classe') == 'CDB/RF':
                 sec_id = gorila.criar_cdb(pos)
-                tx     = gorila.criar_transacao(portfolio_id, sec_id, pos)
+
+                if sec_id in existentes:
+                    # Gorila já calcula rendimento CDI — não duplicar
+                    resultados.append({
+                        'nome': nome, 'classe': pos.get('classe'),
+                        'security_id': sec_id, 'transaction_id': existentes[sec_id],
+                        'ok': True, 'acao': 'ignorado',
+                    })
+                    continue
+
+                tx = gorila.criar_transacao(portfolio_id, sec_id, pos)
+                resultados.append({
+                    'nome': nome, 'classe': pos.get('classe'),
+                    'security_id': sec_id, 'transaction_id': tx.get('id'),
+                    'ok': True, 'acao': 'criado',
+                })
 
             elif pos.get('classe') == 'Poupança':
-                # Security CUSTOM/CASH compartilhado; transação individual por portfólio
+                # CUSTOM/CASH: security compartilhado, transação por portfólio.
+                # atualizar_ou_criar_transacao_poupanca já faz PATCH se existir.
                 sec_id = gorila.criar_ou_buscar_poupanca(pos, sp_db=sp_db())
                 tx     = gorila.atualizar_ou_criar_transacao_poupanca(portfolio_id, sec_id, pos)
+                acao   = 'atualizado' if sec_id in existentes else 'criado'
+                resultados.append({
+                    'nome': nome, 'classe': pos.get('classe'),
+                    'security_id': sec_id, 'transaction_id': tx.get('id'),
+                    'ok': True, 'acao': acao,
+                })
 
             else:
                 # Fundo / Previdência — requer CNPJ e classe no modal
@@ -569,25 +600,40 @@ def api_gorila_upload_posicao_itau():
                     nome_limpo = _re.sub(r'^\(\d+\)\s*', '', nome).strip()
                     sp_db().upsert_liquidity_mapping(nome_limpo, liq_cat)
 
+                if sec_id in existentes:
+                    # Gorila busca NAV diário — não duplicar a transação
+                    resultados.append({
+                        'nome': nome, 'classe': pos.get('classe'),
+                        'security_id': sec_id, 'transaction_id': existentes[sec_id],
+                        'ok': True, 'acao': 'ignorado',
+                    })
+                    continue
+
                 tx = gorila.criar_transacao(portfolio_id, sec_id, pos)
-            resultados.append({
-                'nome':           nome,
-                'classe':         pos.get('classe'),
-                'security_id':    sec_id,
-                'transaction_id': tx.get('id'),
-                'ok':             True,
-            })
+                resultados.append({
+                    'nome': nome, 'classe': pos.get('classe'),
+                    'security_id': sec_id, 'transaction_id': tx.get('id'),
+                    'ok': True, 'acao': 'criado',
+                })
+
         except Exception as e:
             import logging
             logging.getLogger(__name__).exception(f"Erro ao enviar '{nome}' para Gorila")
             erros.append({'nome': nome, 'erro': str(e)})
 
+    criados     = [r for r in resultados if r.get('acao') == 'criado']
+    atualizados = [r for r in resultados if r.get('acao') == 'atualizado']
+    ignorados   = [r for r in resultados if r.get('acao') == 'ignorado']
+
     return jsonify({
-        'ok':         len(erros) == 0,
-        'total':      len(posicoes),
-        'sucesso':    len(resultados),
-        'erros':      erros,
-        'resultados': resultados,
+        'ok':          len(erros) == 0,
+        'total':       len(posicoes),
+        'criados':     len(criados),
+        'atualizados': len(atualizados),
+        'ignorados':   len(ignorados),
+        'sucesso':     len(resultados),
+        'erros':       erros,
+        'resultados':  resultados,
     })
 
 
