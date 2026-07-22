@@ -164,10 +164,14 @@ class GorilaClient:
 
     # ── Consulta de posições existentes ───────────────────────────────────
 
-    def listar_security_ids_com_transacao(self, portfolio_id) -> dict:
+    def listar_security_ids_com_transacao(self, portfolio_id, broker_id=None) -> dict:
         """
-        Retorna dict {security_id: transaction_id} de TODAS as transações
-        do portfólio, paginando automaticamente.
+        Retorna dict {security_id: transaction_id} das transações do portfólio,
+        paginando automaticamente.
+
+        Se broker_id for fornecido (ex: ITAU_CNPJ), filtra pelo custodiante —
+        útil para evitar falsos positivos quando o portfólio tem posições de
+        múltiplos brokers (XP + Itaú, etc.).
 
         Usado no início do upload para saber quais ativos já existem,
         evitando duplicação de INITIAL_CUSTODY_ADJUSTMENT.
@@ -179,16 +183,31 @@ class GorilaClient:
             params = {'limit': 1000}
             if page_token:
                 params['pageToken'] = page_token
+            if broker_id:
+                params['brokerId'] = broker_id   # filtro server-side (se a API suportar)
 
             result  = self._get(f'/portfolios/{portfolio_id}/transactions', params=params)
             records = result.get('records', [])
 
             for tx in records:
+                # Filtro client-side por broker (garante mesmo que a API ignore o param)
+                if broker_id:
+                    broker_obj = tx.get('broker') or {}
+                    tx_broker  = (
+                        broker_obj.get('taxId') or
+                        broker_obj.get('id')    or
+                        tx.get('brokerId')      or ''
+                    )
+                    # Remove caracteres não-numéricos antes de comparar CNPJs
+                    import re as _re
+                    if _re.sub(r'\D', '', str(tx_broker)) != _re.sub(r'\D', '', str(broker_id)):
+                        continue
+
                 sec = tx.get('security') or {}
                 sid = sec.get('id')
                 tid = tx.get('id')
                 if sid and tid and sid not in registrados:
-                    registrados[sid] = tid   # mantém o mais recente (primeiro da lista)
+                    registrados[sid] = tid
 
             next_url = result.get('next')
             if not next_url:
@@ -198,7 +217,8 @@ class GorilaClient:
                 break
             page_token = token
 
-        logger.info(f"[Gorila] {len(registrados)} securities com transação em {portfolio_id}")
+        logger.info(f"[Gorila] {len(registrados)} securities com transação em {portfolio_id}"
+                    + (f" (broker={broker_id})" if broker_id else ""))
         return registrados
 
     # ── Poupança (CUSTOM/CASH) ─────────────────────────────────────────────

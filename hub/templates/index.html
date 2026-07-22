@@ -841,6 +841,7 @@
 
     try {
       const res  = await fetch('/api/documentos-clientes');
+      if (res.status === 401) { window.location.reload(); return; }
       const data = await res.json();
 
       if (!data.ok) throw new Error(data.erro || 'Erro desconhecido');

@@ -76,6 +76,9 @@ def login_required(f):
         if API_KEY and request.headers.get('X-API-Key') == API_KEY:
             return f(*args, **kwargs)
         if not session.get('user'):
+            # Rotas de API retornam JSON 401 (evita o fetch receber HTML de redirect)
+            if request.path.startswith('/api/'):
+                return jsonify({'ok': False, 'erro': 'Sessão expirada. Recarregue a página e faça login novamente.'}), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
@@ -536,7 +539,7 @@ def api_gorila_upload_posicao_itau():
         return jsonify({'ok': False, 'erro': 'portfolio_id e posicoes são obrigatórios.'}), 400
 
     try:
-        from gorila_client import GorilaClient
+        from gorila_client import GorilaClient, ITAU_CNPJ
         gorila = GorilaClient()
     except Exception as e:
         return jsonify({'ok': False, 'erro': str(e)}), 500
@@ -547,7 +550,9 @@ def api_gorila_upload_posicao_itau():
     # ── Busca de uma vez todos os securities já registrados no portfólio ──
     # Evita duplicar INITIAL_CUSTODY_ADJUSTMENT em uploads mensais.
     try:
-        existentes = gorila.listar_security_ids_com_transacao(portfolio_id)
+        existentes = gorila.listar_security_ids_com_transacao(
+                portfolio_id, broker_id=ITAU_CNPJ
+            )
     except Exception as e:
         existentes = {}
         import logging as _log
